@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import re
 
-st.set_page_config(page_title="V38 EXACT MATCH BOT", layout="centered")
+st.set_page_config(page_title="V39 GENE MATCH BOT", layout="centered")
 
 # ------------------ GOOGLE SHEETS ------------------
 
@@ -17,47 +17,52 @@ def fetch_sheets_data():
         return ""
     return ""
 
-# ------------------ UTILS ------------------
-
-def get_streaks(seq):
-    streaks = []
-    count = 1
-    for i in range(1, len(seq)):
-        if seq[i] == seq[i - 1]:
-            count += 1
-        else:
-            streaks.append(count)
-            count = 1
-    streaks.append(count)
-    return streaks
+# ------------------ CONVERT ------------------
 
 def to_cl(seq):
-    return [1 if x % 2 == 0 else 0 for x in seq]
+    return ["C" if x % 2 == 0 else "L" for x in seq]
 
 def to_tn(seq):
-    return [1 if x > 2 else 0 for x in seq]
+    return ["T" if x > 2 else "X" for x in seq]
 
-# ------------------ EXACT MATCH ENGINE ------------------
+# ------------------ GENE CORE ------------------
 
-def find_exact_matches(seq, min_len=15):
+def get_gene(seq):
+    gene = []
+    count = 1
+    current = seq[0]
+
+    for i in range(1, len(seq)):
+        if seq[i] == current:
+            count += 1
+        else:
+            gene.append(f"{current}{count}")
+            current = seq[i]
+            count = 1
+
+    gene.append(f"{current}{count}")
+    return gene
+
+# ------------------ MATCH ENGINE ------------------
+
+def find_gene_matches(gene, min_len=5):
     results = {}
-    n = len(seq)
+    n = len(gene)
 
     for L in range(min_len, n):
-        pattern = seq[-L:]
+        pattern = gene[-L:]
         outcomes = []
 
-        for i in range(n - L - 5):
-            if seq[i:i+L] == pattern:
-                future = seq[i+L:i+L+5]
-                if len(future) < 3:
-                    continue
+        for i in range(n - L - 1):
+            if gene[i:i+L] == pattern:
+                next_gene = gene[i+L]
 
-                fs = get_streaks(future)
+                # lấy số streak
+                s = int(next_gene[1:])
 
-                if fs[0] == 1:
+                if s == 1:
                     outcomes.append("WIN")
-                elif fs[0] == 2:
+                elif s == 2:
                     outcomes.append("DRAW")
                 else:
                     outcomes.append("LOSE")
@@ -74,7 +79,6 @@ def find_exact_matches(seq, min_len=15):
 def analyze_matches(results):
     total_weight = 0
     win_score = 0
-    draw_score = 0
     lose_score = 0
 
     total_win = 0
@@ -95,13 +99,11 @@ def analyze_matches(results):
         total_lose += l
 
         win_score += w * weight
-        draw_score += d * weight
         lose_score += l * weight
-
         total_weight += (w + d + l) * weight
 
         rows.append({
-            "Match Length": L,
+            "Gene Length": L,
             "Count": len(outcomes),
             "Win": w,
             "Draw": d,
@@ -128,9 +130,9 @@ def analyze_matches(results):
 
 # ------------------ UI ------------------
 
-st.title("🧠 V38 EXACT MATCH ANTI-STREAK")
+st.title("🧠 V39 GENE MATCH ANTI-STREAK")
 
-# LOAD GOOGLE SHEETS
+# LOAD DATA
 if st.button("☁️ Load từ Google Sheets"):
     data_from_sheets = fetch_sheets_data()
     if data_from_sheets:
@@ -155,13 +157,15 @@ if st.button("Phân tích"):
     st.subheader("CHẴN / LẺ")
 
     cl_seq = to_cl(data)
-    matches = find_exact_matches(cl_seq)
+    cl_gene = get_gene(cl_seq)
+
+    matches = find_gene_matches(cl_gene)
     result = analyze_matches(matches)
 
     if result:
-        st.write("🔥 Streak = 2 (WIN):", result["total_win"])
-        st.write("⚖️ Streak = 3 (DRAW):", result["total_draw"])
-        st.write("💀 Streak ≥4 (LOSE):", result["total_lose"])
+        st.write("🔥 Streak = 1 (WIN):", result["total_win"])
+        st.write("⚖️ Streak = 2 (DRAW):", result["total_draw"])
+        st.write("💀 Streak ≥3 (LOSE):", result["total_lose"])
 
         st.metric("Win %", result["p_win"])
         st.metric("Lose %", result["p_lose"])
@@ -175,20 +179,24 @@ if st.button("Phân tích"):
             st.warning("⚠️ CHỜ")
 
         st.dataframe(result["table"])
+        st.write("Gene hiện tại:", " ".join(cl_gene[-10:]))
+
     else:
-        st.warning("Không có match ≥15")
+        st.warning("Không có match gene")
 
     # ================= TO NHỎ =================
     st.subheader("TO / NHỎ")
 
     tn_seq = to_tn(data)
-    matches = find_exact_matches(tn_seq)
+    tn_gene = get_gene(tn_seq)
+
+    matches = find_gene_matches(tn_gene)
     result = analyze_matches(matches)
 
     if result:
-        st.write("🔥 Streak = 2 (WIN):", result["total_win"])
-        st.write("⚖️ Streak = 3 (DRAW):", result["total_draw"])
-        st.write("💀 Streak ≥4 (LOSE):", result["total_lose"])
+        st.write("🔥 Streak = 1 (WIN):", result["total_win"])
+        st.write("⚖️ Streak = 2 (DRAW):", result["total_draw"])
+        st.write("💀 Streak ≥3 (LOSE):", result["total_lose"])
 
         st.metric("Win %", result["p_win"])
         st.metric("Lose %", result["p_lose"])
@@ -202,5 +210,7 @@ if st.button("Phân tích"):
             st.warning("⚠️ CHỜ")
 
         st.dataframe(result["table"])
+        st.write("Gene hiện tại:", " ".join(tn_gene[-10:]))
+
     else:
-        st.warning("Không có match ≥15")
+        st.warning("Không có match gene")
