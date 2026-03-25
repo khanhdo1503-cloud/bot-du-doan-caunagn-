@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import re
 
-st.set_page_config(page_title="V39 GENE MATCH BOT", layout="centered")
+st.set_page_config(page_title="V40 REALTIME STREAK-2 BOT", layout="centered")
 
 # ------------------ GOOGLE SHEETS ------------------
 
@@ -25,7 +25,7 @@ def to_cl(seq):
 def to_tn(seq):
     return ["T" if x > 2 else "X" for x in seq]
 
-# ------------------ GENE CORE ------------------
+# ------------------ GENE ------------------
 
 def get_gene(seq):
     gene = []
@@ -36,18 +36,22 @@ def get_gene(seq):
         if seq[i] == current:
             count += 1
         else:
-            gene.append(f"{current}{count}")
+            gene.append((current, count))
             current = seq[i]
             count = 1
 
-    gene.append(f"{current}{count}")
+    gene.append((current, count))
     return gene
 
-# ------------------ MATCH ENGINE ------------------
+# ------------------ CORE LOGIC ------------------
 
-def find_gene_matches(gene, min_len=5):
+def find_streak2_matches(gene, min_len=5):
     results = {}
     n = len(gene)
+
+    # chỉ chạy khi hiện tại là streak = 2
+    if gene[-1][1] != 2:
+        return {}
 
     for L in range(min_len, n):
         pattern = gene[-L:]
@@ -55,16 +59,24 @@ def find_gene_matches(gene, min_len=5):
 
         for i in range(n - L - 1):
             if gene[i:i+L] == pattern:
-                next_gene = gene[i+L]
-                s = int(next_gene[1:])
 
-                # ===== LOGIC CHUẨN CỦA M =====
-                if s == 2:
-                    outcomes.append("WIN")
-                elif s == 3:
-                    outcomes.append("DRAW")
-                elif s >= 4:
-                    outcomes.append("LOSE")
+                # gene hiện tại trong quá khứ
+                current_gene = gene[i+L-1]
+
+                # chỉ xét đúng streak = 2
+                if current_gene[1] != 2:
+                    continue
+
+                next_gene = gene[i+L]
+                next_len = next_gene[1]
+
+                # ===== LOGIC CHUẨN =====
+                if next_len == 1 or next_len == 2:
+                    outcomes.append("STOP_2")   # dừng ở 2 → WIN
+                elif next_len == 3:
+                    outcomes.append("STOP_3")   # → DRAW
+                elif next_len >= 4:
+                    outcomes.append("TO_4+")    # → LOSE
 
         if len(outcomes) > 0:
             results[L] = outcomes
@@ -75,63 +87,63 @@ def find_gene_matches(gene, min_len=5):
 
 # ------------------ ANALYSIS ------------------
 
-def analyze_matches(results):
+def analyze(results):
     total_weight = 0
-    win_score = 0
-    lose_score = 0
 
-    total_win = 0
-    total_draw = 0
-    total_lose = 0
+    stop2 = 0
+    stop3 = 0
+    to4 = 0
+
+    score_win = 0
+    score_lose = 0
 
     rows = []
 
     for L, outcomes in results.items():
         weight = L * L
 
-        w = outcomes.count("WIN")
-        d = outcomes.count("DRAW")
-        l = outcomes.count("LOSE")
+        s2 = outcomes.count("STOP_2")
+        s3 = outcomes.count("STOP_3")
+        s4 = outcomes.count("TO_4+")
 
-        total_win += w
-        total_draw += d
-        total_lose += l
+        stop2 += s2
+        stop3 += s3
+        to4 += s4
 
-        win_score += w * weight
-        lose_score += l * weight
-        total_weight += (w + d + l) * weight
+        score_win += s2 * weight
+        score_lose += s4 * weight
+        total_weight += (s2 + s3 + s4) * weight
 
         rows.append({
             "Gene Length": L,
             "Count": len(outcomes),
-            "Win": w,
-            "Draw": d,
-            "Lose": l,
+            "Stop@2": s2,
+            "Stop@3": s3,
+            "To≥4": s4,
             "Weight": weight
         })
 
     if total_weight == 0:
         return None
 
-    p_win = win_score / total_weight
-    p_lose = lose_score / total_weight
+    p_win = score_win / total_weight
+    p_lose = score_lose / total_weight
     EV = p_win*1 + p_lose*(-2)
 
     return {
+        "stop2": stop2,
+        "stop3": stop3,
+        "to4": to4,
         "p_win": round(p_win*100,1),
         "p_lose": round(p_lose*100,1),
         "EV": round(EV,3),
-        "total_win": total_win,
-        "total_draw": total_draw,
-        "total_lose": total_lose,
         "table": pd.DataFrame(rows)
     }
 
 # ------------------ UI ------------------
 
-st.title("🧠 V39 GENE MATCH ANTI-STREAK")
+st.title("🧠 V40 REALTIME STREAK-2 BOT")
 
-# LOAD DATA
 if st.button("☁️ Load từ Google Sheets"):
     data_from_sheets = fetch_sheets_data()
     if data_from_sheets:
@@ -158,30 +170,35 @@ if st.button("Phân tích"):
     cl_seq = to_cl(data)
     cl_gene = get_gene(cl_seq)
 
-    matches = find_gene_matches(cl_gene)
-    result = analyze_matches(matches)
+    st.write("Gene hiện tại:", " ".join([f"{x}{y}" for x,y in cl_gene[-10:]]))
 
-    if result:
-        st.write("🔥 WIN (streak=2):", result["total_win"])
-        st.write("⚖️ DRAW (streak=3):", result["total_draw"])
-        st.write("💀 LOSE (streak≥4):", result["total_lose"])
+    if cl_gene[-1][1] == 2:
+        st.success("🚨 ĐANG Ở STREAK = 2 → PHÂN TÍCH")
 
-        st.metric("Win %", result["p_win"])
-        st.metric("Lose %", result["p_lose"])
-        st.metric("EV", result["EV"])
+        matches = find_streak2_matches(cl_gene)
+        result = analyze(matches)
 
-        if result["EV"] > 0 and result["p_lose"] < 35:
-            st.success("🟢 VÀO")
-        elif result["p_lose"] > 40:
-            st.error("🔴 NÉ")
+        if result:
+            st.write("🟢 Dừng tại 2 (WIN):", result["stop2"])
+            st.write("⚖️ Lên 3 (DRAW):", result["stop3"])
+            st.write("💀 Lên ≥4 (LOSE):", result["to4"])
+
+            st.metric("Win %", result["p_win"])
+            st.metric("Lose %", result["p_lose"])
+            st.metric("EV", result["EV"])
+
+            if result["EV"] > 0 and result["p_lose"] < 35:
+                st.success("🟢 NÊN ĐÁNH")
+            elif result["p_lose"] > 40:
+                st.error("🔴 NÉ GẤP")
+            else:
+                st.warning("⚠️ KHÔNG RÕ")
+
+            st.dataframe(result["table"])
         else:
-            st.warning("⚠️ CHỜ")
-
-        st.dataframe(result["table"])
-        st.write("Gene hiện tại:", " ".join(cl_gene[-10:]))
-
+            st.warning("Không có match đủ mạnh")
     else:
-        st.warning("Không có match gene")
+        st.info("⏳ Chưa phải streak = 2 → chưa vào kèo")
 
     # ================= TO NHỎ =================
     st.subheader("TO / NHỎ")
@@ -189,27 +206,32 @@ if st.button("Phân tích"):
     tn_seq = to_tn(data)
     tn_gene = get_gene(tn_seq)
 
-    matches = find_gene_matches(tn_gene)
-    result = analyze_matches(matches)
+    st.write("Gene hiện tại:", " ".join([f"{x}{y}" for x,y in tn_gene[-10:]]))
 
-    if result:
-        st.write("🔥 WIN (streak=2):", result["total_win"])
-        st.write("⚖️ DRAW (streak=3):", result["total_draw"])
-        st.write("💀 LOSE (streak≥4):", result["total_lose"])
+    if tn_gene[-1][1] == 2:
+        st.success("🚨 ĐANG Ở STREAK = 2 → PHÂN TÍCH")
 
-        st.metric("Win %", result["p_win"])
-        st.metric("Lose %", result["p_lose"])
-        st.metric("EV", result["EV"])
+        matches = find_streak2_matches(tn_gene)
+        result = analyze(matches)
 
-        if result["EV"] > 0 and result["p_lose"] < 35:
-            st.success("🟢 VÀO")
-        elif result["p_lose"] > 40:
-            st.error("🔴 NÉ")
+        if result:
+            st.write("🟢 Dừng tại 2 (WIN):", result["stop2"])
+            st.write("⚖️ Lên 3 (DRAW):", result["stop3"])
+            st.write("💀 Lên ≥4 (LOSE):", result["to4"])
+
+            st.metric("Win %", result["p_win"])
+            st.metric("Lose %", result["p_lose"])
+            st.metric("EV", result["EV"])
+
+            if result["EV"] > 0 and result["p_lose"] < 35:
+                st.success("🟢 NÊN ĐÁNH")
+            elif result["p_lose"] > 40:
+                st.error("🔴 NÉ GẤP")
+            else:
+                st.warning("⚠️ KHÔNG RÕ")
+
+            st.dataframe(result["table"])
         else:
-            st.warning("⚠️ CHỜ")
-
-        st.dataframe(result["table"])
-        st.write("Gene hiện tại:", " ".join(tn_gene[-10:]))
-
+            st.warning("Không có match đủ mạnh")
     else:
-        st.warning("Không có match gene")
+        st.info("⏳ Chưa phải streak = 2 → chưa vào kèo")
