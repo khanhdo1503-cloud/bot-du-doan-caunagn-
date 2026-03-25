@@ -56,15 +56,14 @@ def find_gene_matches(gene, min_len=5):
         for i in range(n - L - 1):
             if gene[i:i+L] == pattern:
                 next_gene = gene[i+L]
-
-                # lấy số streak
                 s = int(next_gene[1:])
 
-                if s == 1:
+                # ===== LOGIC CHUẨN CỦA M =====
+                if s == 2:
                     outcomes.append("WIN")
-                elif s == 2:
+                elif s == 3:
                     outcomes.append("DRAW")
-                else:
+                elif s >= 4:
                     outcomes.append("LOSE")
 
         if len(outcomes) > 0:
@@ -163,9 +162,9 @@ if st.button("Phân tích"):
     result = analyze_matches(matches)
 
     if result:
-        st.write("🔥 Streak = 1 (WIN):", result["total_win"])
-        st.write("⚖️ Streak = 2 (DRAW):", result["total_draw"])
-        st.write("💀 Streak ≥3 (LOSE):", result["total_lose"])
+        st.write("🔥 WIN (streak=2):", result["total_win"])
+        st.write("⚖️ DRAW (streak=3):", result["total_draw"])
+        st.write("💀 LOSE (streak≥4):", result["total_lose"])
 
         st.metric("Win %", result["p_win"])
         st.metric("Lose %", result["p_lose"])
@@ -194,9 +193,9 @@ if st.button("Phân tích"):
     result = analyze_matches(matches)
 
     if result:
-        st.write("🔥 Streak = 1 (WIN):", result["total_win"])
-        st.write("⚖️ Streak = 2 (DRAW):", result["total_draw"])
-        st.write("💀 Streak ≥3 (LOSE):", result["total_lose"])
+        st.write("🔥 WIN (streak=2):", result["total_win"])
+        st.write("⚖️ DRAW (streak=3):", result["total_draw"])
+        st.write("💀 LOSE (streak≥4):", result["total_lose"])
 
         st.metric("Win %", result["p_win"])
         st.metric("Lose %", result["p_lose"])
