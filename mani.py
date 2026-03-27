@@ -2,12 +2,11 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
-from collections import Counter
-import plotly.graph_objects as go
+from collections import defaultdict
 
-st.set_page_config(page_title="V42 VISUAL BOT", layout="wide")
+st.set_page_config(page_title="V43 ALL STREAK BOT", layout="centered")
 
-# ------------------ LOAD DATA ------------------
+# ------------------ LOAD ------------------
 
 def fetch_sheets_data():
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
@@ -48,132 +47,73 @@ def get_gene(seq):
     gene.append((current, count))
     return gene
 
-# ------------------ ENGINE ------------------
+# ------------------ CORE V43 ------------------
 
-def analyze_streak(seq, gene, target_streak, min_len=5):
+def analyze_all_streaks(data, gene, min_len=5):
     n = len(gene)
-    results = {}
+    results = defaultdict(lambda: defaultdict(int))  # number -> weighted count
 
-    if n == 0 or gene[-1][1] != target_streak:
-        return {}
+    current_streak = gene[-1][1]
 
     for L in range(min_len, n):
         pattern = gene[-L:]
-
-        outcomes = []
-        detail_stop = []
-        detail_mid = []
-        detail_long = []
+        weight = L * L
 
         for i in range(n - L - 1):
             if gene[i:i+L] == pattern:
 
-                if gene[i+L-1][1] != target_streak:
+                # chỉ lấy đúng streak giống hiện tại
+                if gene[i+L-1][1] != current_streak:
                     continue
 
-                next_len = gene[i+L][1]
                 pos = sum(g[1] for g in gene[:i+L])
 
-                if pos >= len(seq):
+                if pos >= len(data):
                     continue
 
-                if target_streak == 2:
-                    if next_len <= 2:
-                        detail_stop.append(seq[pos])
-                        outcomes.append("STOP2")
-                    elif next_len == 3:
-                        detail_mid.append(seq[pos])
-                        outcomes.append("STOP3")
-                    else:
-                        detail_long.append(seq[pos])
-                        outcomes.append("TO4")
-
-                elif target_streak == 3:
-                    if next_len == 3:
-                        detail_stop.append(seq[pos])
-                        outcomes.append("STOP3")
-                    else:
-                        detail_long.append(seq[pos])
-                        outcomes.append("TO4")
-
-        if outcomes:
-            results[L] = {
-                "stop": detail_stop,
-                "mid": detail_mid,
-                "long": detail_long
-            }
+                next_number = data[pos]
+                results[L][next_number] += weight
 
     return results
 
-# ------------------ ANALYSIS ------------------
+# ------------------ PROCESS ------------------
 
-def summarize(results):
-    rows = []
-    total_stop = total_mid = total_long = 0
+def summarize_numbers(results):
+    total_counts = defaultdict(int)
 
-    for L, data in results.items():
-        s = len(data["stop"])
-        m = len(data["mid"])
-        l = len(data["long"])
+    for L in results:
+        for num, val in results[L].items():
+            total_counts[num] += val
 
-        total_stop += s
-        total_mid += m
-        total_long += l
+    total = sum(total_counts.values())
 
-        rows.append({"L": L, "Stop": s, "Mid": m, "Long": l})
+    if total == 0:
+        return None
 
-    return pd.DataFrame(rows), total_stop, total_mid, total_long
+    probs = {k: round(v/total*100, 2) for k, v in total_counts.items()}
 
-def breakdown_numbers(arr):
-    return dict(Counter(arr))
+    # sort theo xác suất
+    sorted_probs = dict(sorted(probs.items(), key=lambda x: -x[1]))
 
-# ------------------ VISUAL ------------------
-
-def plot_gene(gene):
-    colors = {"C": "blue", "L": "red", "T": "green", "X": "orange"}
-
-    x = []
-    y = []
-    c = []
-
-    index = 0
-    for g in gene:
-        for _ in range(g[1]):
-            x.append(index)
-            y.append(g[0])
-            c.append(colors.get(g[0], "gray"))
-            index += 1
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Scatter(
-        x=x,
-        y=y,
-        mode="markers",
-        marker=dict(color=c, size=6)
-    ))
-
-    fig.update_layout(height=200, margin=dict(l=10, r=10, t=10, b=10))
-    return fig
-
-def highlight_streak(gene):
-    last = gene[-1]
-    return f"🔥 STREAK HIỆN TẠI: {last[0]} x {last[1]}"
+    return total_counts, sorted_probs
 
 # ------------------ UI ------------------
 
-st.title("🧠 V42 VISUAL BOT")
+st.title("🧠 V43 ALL STREAK BOT")
 
-if st.button("Load Data"):
-    data = fetch_sheets_data()
-    st.session_state["data_input"] = data
+if st.button("☁️ Load Data"):
+    st.session_state["data_input"] = fetch_sheets_data()
 
 raw = st.text_area("Data", value=st.session_state.get("data_input", ""))
 
 if st.button("Phân tích"):
     data = [int(x) for x in raw if x in "1234"]
 
-    st.write("Tổng data:", len(data))
+    if len(data) < 200:
+        st.warning("Cần ít nhất 200 data")
+        st.stop()
+
+    st.write("📊 Tổng data:", len(data))
 
     for name, func in [("CHẴN/LẺ", to_cl), ("TO/NHỎ", to_tn)]:
         st.subheader(name)
@@ -184,59 +124,28 @@ if st.button("Phân tích"):
         if not gene:
             continue
 
-        # 🔥 highlight
-        st.markdown(highlight_streak(gene))
+        current_streak = gene[-1][1]
+        st.write(f"🔥 Streak hiện tại: {current_streak}")
+        st.write("Gene:", " ".join([f"{x}{y}" for x,y in gene[-10:]]))
 
-        # 🎯 gene đẹp
-        st.write("Gene:", " | ".join([f"{g[0]}{g[1]}" for g in gene[-10:]]))
+        results = analyze_all_streaks(data, gene)
 
-        # 📊 timeline
-        st.plotly_chart(plot_gene(gene[-100:]))
+        summary = summarize_numbers(results)
 
-        if gene[-1][1] == 2:
-            st.success("ĐANG STREAK 2")
+        if not summary:
+            st.warning("Không đủ dữ liệu match")
+            continue
 
-            res = analyze_streak(seq, gene, 2)
-            df, s2, s3, s4 = summarize(res)
+        counts, probs = summary
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("STOP2", s2)
-            col2.metric("LÊN 3", s3)
-            col3.metric("LÊN ≥4", s4)
+        st.write("📌 SỐ LẦN XUẤT HIỆN (CÓ TRỌNG SỐ):")
+        for k, v in sorted(counts.items(), key=lambda x: -x[1]):
+            st.write(f"Số {k}: {v} điểm")
 
-            st.dataframe(df)
+        st.write("📊 XÁC SUẤT (%):")
+        for k, v in probs.items():
+            st.write(f"Số {k}: {v}%")
 
-            all_stop = []
-            all_mid = []
-            all_long = []
+        best = max(probs, key=probs.get)
 
-            for r in res.values():
-                all_stop += r["stop"]
-                all_mid += r["mid"]
-                all_long += r["long"]
-
-            st.write("STOP2:", breakdown_numbers(all_stop))
-            st.write("STOP3:", breakdown_numbers(all_mid))
-            st.write("TO4:", breakdown_numbers(all_long))
-
-        elif gene[-1][1] == 3:
-            st.warning("ĐANG STREAK 3")
-
-            res = analyze_streak(seq, gene, 3)
-            df, s3, _, s4 = summarize(res)
-
-            col1, col2 = st.columns(2)
-            col1.metric("STOP3", s3)
-            col2.metric("LÊN ≥4", s4)
-
-            st.dataframe(df)
-
-            all_stop = []
-            all_long = []
-
-            for r in res.values():
-                all_stop += r["stop"]
-                all_long += r["long"]
-
-            st.write("STOP3:", breakdown_numbers(all_stop))
-            st.write("TO4:", breakdown_numbers(all_long))
+        st.success(f"🎯 NÊN ĐÁNH SỐ: {best} ({probs[best]}%)")
