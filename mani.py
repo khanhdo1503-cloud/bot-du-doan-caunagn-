@@ -4,7 +4,7 @@ import requests
 import re
 from collections import Counter
 
-st.set_page_config(page_title="V45 FINAL BOT", layout="centered")
+st.set_page_config(page_title="V43 FINAL BOT", layout="centered")
 
 # ------------------ LOAD ------------------
 
@@ -44,7 +44,7 @@ def get_gene(seq):
     gene.append((current, count))
     return gene
 
-# ------------------ MATCH + SỐ (FIX CHUẨN) ------------------
+# ------------------ MATCH (FIXED CORE) ------------------
 
 def find_matches(gene, data, target_streak, min_len=5):
     results = {}
@@ -73,20 +73,30 @@ def find_matches(gene, data, target_streak, min_len=5):
                 if pos >= len(data):
                     continue
 
+                # ✅ FIX QUAN TRỌNG: chỉ lấy 1 số duy nhất
                 next_number = data[pos]
 
-                # ===== LOGIC GIỮ NGUYÊN V40 =====
-                if next_len <= 2:
-                    outcomes.append("STOP_2")
-                    stop2_nums.append(next_number)
+                # ===== LOGIC =====
+                if target_streak == 2:
+                    if next_len <= 2:
+                        outcomes.append("STOP_2")
+                        stop2_nums.append(next_number)
 
-                elif next_len == 3:
-                    outcomes.append("STOP_3")
-                    stop3_nums.append(next_number)
+                    elif next_len == 3:
+                        outcomes.append("STOP_3")
+                        stop3_nums.append(next_number)
 
-                elif next_len >= 4:
-                    outcomes.append("TO_4+")
-                    to4_nums.append(next_number)
+                    else:
+                        outcomes.append("TO_4+")
+                        to4_nums.append(next_number)
+
+                elif target_streak == 3:
+                    if next_len == 3:
+                        outcomes.append("STOP_3")
+                        stop3_nums.append(next_number)
+                    else:
+                        outcomes.append("TO_4+")
+                        to4_nums.append(next_number)
 
         if outcomes:
             results[L] = {
@@ -100,7 +110,7 @@ def find_matches(gene, data, target_streak, min_len=5):
 
     return results
 
-# ------------------ ANALYSIS (GIỮ NGUYÊN) ------------------
+# ------------------ ANALYSIS ------------------
 
 def analyze(results):
     total_weight = 0
@@ -152,7 +162,7 @@ def analyze(results):
 
 # ------------------ UI ------------------
 
-st.title("🧠 V45 FINAL BOT (FULL + FIX)")
+st.title("🧠 V43 FINAL BOT")
 
 if st.button("☁️ Load từ Google Sheets"):
     data_from_sheets = fetch_sheets_data()
@@ -178,16 +188,15 @@ if st.button("Phân tích"):
 
         st.write("Gene:", " ".join([f"{x}{y}" for x,y in gene[-10:]]))
 
-        current = gene[-1][1]
+        current_streak = gene[-1][1]
 
-        if current in [2,3]:
-            st.success(f"🚨 STREAK = {current}")
+        if current_streak in [2, 3]:
+            st.success(f"🚨 STREAK = {current_streak} → PHÂN TÍCH")
 
-            matches = find_matches(gene, data, current)
+            matches = find_matches(gene, data, current_streak)
             result = analyze(matches)
 
             if result:
-                # ===== V40 =====
                 st.write("🟢 Stop2:", result["stop2"])
                 st.write("⚖️ Stop3:", result["stop3"])
                 st.write("💀 To4+:", result["to4"])
@@ -196,9 +205,16 @@ if st.button("Phân tích"):
                 st.metric("Lose %", result["p_lose"])
                 st.metric("EV", result["EV"])
 
+                if result["EV"] > 0 and result["p_lose"] < 35:
+                    st.success("🟢 NÊN ĐÁNH")
+                elif result["p_lose"] > 40:
+                    st.error("🔴 NÉ GẤP")
+                else:
+                    st.warning("⚠️ KHÔNG RÕ")
+
                 st.dataframe(result["table"])
 
-                # ===== FIX CHI TIẾT SỐ =====
+                # ===== CHI TIẾT SỐ (CHUẨN FIX) =====
                 st.write("🎯 CHI TIẾT SỐ:")
 
                 all_stop2 = []
@@ -210,13 +226,14 @@ if st.button("Phân tích"):
                     all_stop3 += r["stop3"]
                     all_to4 += r["to4"]
 
-                if current == 2:
-                    st.write(f"🟢 STOP2 ({len(all_stop2)}):", dict(Counter(all_stop2)))
-                    st.write(f"⚖️ LÊN 3 ({len(all_stop3)}):", dict(Counter(all_stop3)))
+                if all_stop2:
+                    st.write("🟢 STOP2:", dict(Counter(all_stop2)))
 
-                if current == 3:
-                    st.write(f"⚖️ STOP3 ({len(all_stop3)}):", dict(Counter(all_stop3)))
-                    st.write(f"💀 LÊN 4+ ({len(all_to4)}):", dict(Counter(all_to4)))
+                if all_stop3:
+                    st.write("⚖️ STOP3:", dict(Counter(all_stop3)))
+
+                if all_to4:
+                    st.write("💀 TO4+:", dict(Counter(all_to4)))
 
         else:
-            st.info("⏳ Chưa vào streak 2 hoặc 3")
+            st.info("⏳ Chưa vào vùng streak mạnh (2 hoặc 3)")
