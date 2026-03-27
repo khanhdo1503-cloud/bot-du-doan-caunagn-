@@ -4,7 +4,7 @@ import requests
 import re
 from collections import Counter
 
-st.set_page_config(page_title="V44 FINAL FIX", layout="centered")
+st.set_page_config(page_title="V45 FINAL BOT", layout="centered")
 
 # ------------------ LOAD ------------------
 
@@ -44,22 +44,22 @@ def get_gene(seq):
     gene.append((current, count))
     return gene
 
-# ------------------ MATCH ------------------
+# ------------------ MATCH + SỐ (FIX CHUẨN) ------------------
 
 def find_matches(gene, data, target_streak, min_len=5):
+    results = {}
     n = len(gene)
 
-    stop2_nums = []
-    stop3_nums = []
-    to4_nums = []
-
     if gene[-1][1] != target_streak:
-        return stop2_nums, stop3_nums, to4_nums
+        return {}
 
     for L in range(min_len, n):
         pattern = gene[-L:]
 
-        found = False
+        outcomes = []
+        stop2_nums = []
+        stop3_nums = []
+        to4_nums = []
 
         for i in range(n - L - 1):
             if gene[i:i+L] == pattern:
@@ -74,47 +74,101 @@ def find_matches(gene, data, target_streak, min_len=5):
                     continue
 
                 next_number = data[pos]
-                found = True
 
-                # ===== LOGIC =====
-                if target_streak == 2:
-                    if next_len <= 2:
-                        stop2_nums.append(next_number)
-                    elif next_len == 3:
-                        stop3_nums.append(next_number)
-                    elif next_len >= 4:
-                        to4_nums.append(next_number)
+                # ===== LOGIC GIỮ NGUYÊN V40 =====
+                if next_len <= 2:
+                    outcomes.append("STOP_2")
+                    stop2_nums.append(next_number)
 
-                elif target_streak == 3:
-                    if next_len == 3:
-                        stop3_nums.append(next_number)
-                    elif next_len >= 4:
-                        to4_nums.append(next_number)
+                elif next_len == 3:
+                    outcomes.append("STOP_3")
+                    stop3_nums.append(next_number)
 
-        if not found:
+                elif next_len >= 4:
+                    outcomes.append("TO_4+")
+                    to4_nums.append(next_number)
+
+        if outcomes:
+            results[L] = {
+                "outcomes": outcomes,
+                "stop2": stop2_nums,
+                "stop3": stop3_nums,
+                "to4": to4_nums
+            }
+        else:
             break
 
-    return stop2_nums, stop3_nums, to4_nums
+    return results
+
+# ------------------ ANALYSIS (GIỮ NGUYÊN) ------------------
+
+def analyze(results):
+    total_weight = 0
+    stop2 = stop3 = to4 = 0
+    score_win = score_lose = 0
+    rows = []
+
+    for L, data in results.items():
+        outcomes = data["outcomes"]
+        weight = L * L
+
+        s2 = outcomes.count("STOP_2")
+        s3 = outcomes.count("STOP_3")
+        s4 = outcomes.count("TO_4+")
+
+        stop2 += s2
+        stop3 += s3
+        to4 += s4
+
+        score_win += s2 * weight
+        score_lose += s4 * weight
+        total_weight += (s2 + s3 + s4) * weight
+
+        rows.append({
+            "Gene Length": L,
+            "Count": len(outcomes),
+            "Stop@2": s2,
+            "Stop@3": s3,
+            "To≥4": s4,
+            "Weight": weight
+        })
+
+    if total_weight == 0:
+        return None
+
+    p_win = score_win / total_weight
+    p_lose = score_lose / total_weight
+    EV = p_win*1 + p_lose*(-2)
+
+    return {
+        "stop2": stop2,
+        "stop3": stop3,
+        "to4": to4,
+        "p_win": round(p_win*100,1),
+        "p_lose": round(p_lose*100,1),
+        "EV": round(EV,3),
+        "table": pd.DataFrame(rows)
+    }
 
 # ------------------ UI ------------------
 
-st.title("🧠 V44 FINAL FIX BOT")
+st.title("🧠 V45 FINAL BOT (FULL + FIX)")
 
-if st.button("☁️ Load Data"):
-    data = fetch_sheets_data()
-    if data:
-        st.session_state["data_input"] = data
+if st.button("☁️ Load từ Google Sheets"):
+    data_from_sheets = fetch_sheets_data()
+    if data_from_sheets:
+        st.session_state["data_input"] = data_from_sheets
 
-raw = st.text_area("Nhập data", value=st.session_state.get("data_input", ""))
+raw_input = st.text_area("Nhập dữ liệu", value=st.session_state.get("data_input", ""))
 
 if st.button("Phân tích"):
-    data = [int(x) for x in raw if x in "1234"]
+    data = [int(x) for x in raw_input if x in "1234"]
 
     if len(data) < 200:
         st.warning("Cần ít nhất 200 data")
         st.stop()
 
-    st.write("📊 Tổng:", len(data))
+    st.write("📊 Tổng data:", len(data))
 
     for name, func in [("CHẴN/LẺ", to_cl), ("TO/NHỎ", to_tn)]:
         st.subheader(name)
@@ -126,29 +180,43 @@ if st.button("Phân tích"):
 
         current = gene[-1][1]
 
-        if current in [2, 3]:
+        if current in [2,3]:
             st.success(f"🚨 STREAK = {current}")
 
-            stop2, stop3, to4 = find_matches(gene, data, current)
+            matches = find_matches(gene, data, current)
+            result = analyze(matches)
 
-            # ===== STREAK 2 =====
-            if current == 2:
-                st.write(f"🟢 STOP2 ({len(stop2)} lần):")
-                st.write(dict(Counter(stop2)))
+            if result:
+                # ===== V40 =====
+                st.write("🟢 Stop2:", result["stop2"])
+                st.write("⚖️ Stop3:", result["stop3"])
+                st.write("💀 To4+:", result["to4"])
 
-                st.write(f"⚖️ LÊN 3 ({len(stop3)} lần):")
-                st.write(dict(Counter(stop3)))
+                st.metric("Win %", result["p_win"])
+                st.metric("Lose %", result["p_lose"])
+                st.metric("EV", result["EV"])
 
-                st.write(f"💀 LÊN 4+ ({len(to4)} lần):")
-                st.write(dict(Counter(to4)))
+                st.dataframe(result["table"])
 
-            # ===== STREAK 3 =====
-            if current == 3:
-                st.write(f"⚖️ STOP3 ({len(stop3)} lần):")
-                st.write(dict(Counter(stop3)))
+                # ===== FIX CHI TIẾT SỐ =====
+                st.write("🎯 CHI TIẾT SỐ:")
 
-                st.write(f"💀 LÊN 4+ ({len(to4)} lần):")
-                st.write(dict(Counter(to4)))
+                all_stop2 = []
+                all_stop3 = []
+                all_to4 = []
+
+                for r in matches.values():
+                    all_stop2 += r["stop2"]
+                    all_stop3 += r["stop3"]
+                    all_to4 += r["to4"]
+
+                if current == 2:
+                    st.write(f"🟢 STOP2 ({len(all_stop2)}):", dict(Counter(all_stop2)))
+                    st.write(f"⚖️ LÊN 3 ({len(all_stop3)}):", dict(Counter(all_stop3)))
+
+                if current == 3:
+                    st.write(f"⚖️ STOP3 ({len(all_stop3)}):", dict(Counter(all_stop3)))
+                    st.write(f"💀 LÊN 4+ ({len(all_to4)}):", dict(Counter(all_to4)))
 
         else:
-            st.info("⏳ Không phải streak 2 hoặc 3")
+            st.info("⏳ Chưa vào streak 2 hoặc 3")
