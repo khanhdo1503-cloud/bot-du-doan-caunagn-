@@ -3,8 +3,9 @@ import pandas as pd
 import requests
 import re
 from collections import Counter
+import plotly.graph_objects as go
 
-st.set_page_config(page_title="V41 FIXED BOT", layout="centered")
+st.set_page_config(page_title="V42 VISUAL BOT", layout="wide")
 
 # ------------------ LOAD DATA ------------------
 
@@ -47,7 +48,7 @@ def get_gene(seq):
     gene.append((current, count))
     return gene
 
-# ------------------ CORE ENGINE ------------------
+# ------------------ ENGINE ------------------
 
 def analyze_streak(seq, gene, target_streak, min_len=5):
     n = len(gene)
@@ -67,46 +68,36 @@ def analyze_streak(seq, gene, target_streak, min_len=5):
         for i in range(n - L - 1):
             if gene[i:i+L] == pattern:
 
-                g = gene[i+L-1]
-                if g[1] != target_streak:
+                if gene[i+L-1][1] != target_streak:
                     continue
 
-                next_gene = gene[i+L]
-                next_len = next_gene[1]
-
-                # ===== FIX POS =====
-                pos = sum(g[1] for g in gene[:i+L])  # start của next streak
+                next_len = gene[i+L][1]
+                pos = sum(g[1] for g in gene[:i+L])
 
                 if pos >= len(seq):
                     continue
 
-                # ===== STREAK 2 =====
                 if target_streak == 2:
                     if next_len <= 2:
                         detail_stop.append(seq[pos])
                         outcomes.append("STOP2")
-
                     elif next_len == 3:
                         detail_mid.append(seq[pos])
                         outcomes.append("STOP3")
-
-                    elif next_len >= 4:
+                    else:
                         detail_long.append(seq[pos])
                         outcomes.append("TO4")
 
-                # ===== STREAK 3 =====
                 elif target_streak == 3:
                     if next_len == 3:
                         detail_stop.append(seq[pos])
                         outcomes.append("STOP3")
-
-                    elif next_len >= 4:
+                    else:
                         detail_long.append(seq[pos])
                         outcomes.append("TO4")
 
         if outcomes:
             results[L] = {
-                "outcomes": outcomes,
                 "stop": detail_stop,
                 "mid": detail_mid,
                 "long": detail_long
@@ -118,10 +109,7 @@ def analyze_streak(seq, gene, target_streak, min_len=5):
 
 def summarize(results):
     rows = []
-
-    total_stop = 0
-    total_mid = 0
-    total_long = 0
+    total_stop = total_mid = total_long = 0
 
     for L, data in results.items():
         s = len(data["stop"])
@@ -132,22 +120,49 @@ def summarize(results):
         total_mid += m
         total_long += l
 
-        rows.append({
-            "L": L,
-            "Count": s + m + l,
-            "Stop": s,
-            "Mid": m,
-            "Long": l
-        })
+        rows.append({"L": L, "Stop": s, "Mid": m, "Long": l})
 
     return pd.DataFrame(rows), total_stop, total_mid, total_long
 
 def breakdown_numbers(arr):
     return dict(Counter(arr))
 
+# ------------------ VISUAL ------------------
+
+def plot_gene(gene):
+    colors = {"C": "blue", "L": "red", "T": "green", "X": "orange"}
+
+    x = []
+    y = []
+    c = []
+
+    index = 0
+    for g in gene:
+        for _ in range(g[1]):
+            x.append(index)
+            y.append(g[0])
+            c.append(colors.get(g[0], "gray"))
+            index += 1
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=y,
+        mode="markers",
+        marker=dict(color=c, size=6)
+    ))
+
+    fig.update_layout(height=200, margin=dict(l=10, r=10, t=10, b=10))
+    return fig
+
+def highlight_streak(gene):
+    last = gene[-1]
+    return f"🔥 STREAK HIỆN TẠI: {last[0]} x {last[1]}"
+
 # ------------------ UI ------------------
 
-st.title("🧠 V41 FIXED BOT")
+st.title("🧠 V42 VISUAL BOT")
 
 if st.button("Load Data"):
     data = fetch_sheets_data()
@@ -167,21 +182,27 @@ if st.button("Phân tích"):
         gene = get_gene(seq)
 
         if not gene:
-            st.warning("Không có dữ liệu")
             continue
 
-        st.write("Gene hiện tại:", gene[-10:])
+        # 🔥 highlight
+        st.markdown(highlight_streak(gene))
 
-        # ===== STREAK 2 =====
+        # 🎯 gene đẹp
+        st.write("Gene:", " | ".join([f"{g[0]}{g[1]}" for g in gene[-10:]]))
+
+        # 📊 timeline
+        st.plotly_chart(plot_gene(gene[-100:]))
+
         if gene[-1][1] == 2:
             st.success("ĐANG STREAK 2")
 
             res = analyze_streak(seq, gene, 2)
             df, s2, s3, s4 = summarize(res)
 
-            st.write("Dừng 2:", s2)
-            st.write("Lên 3:", s3)
-            st.write("Lên ≥4:", s4)
+            col1, col2, col3 = st.columns(3)
+            col1.metric("STOP2", s2)
+            col2.metric("LÊN 3", s3)
+            col3.metric("LÊN ≥4", s4)
 
             st.dataframe(df)
 
@@ -194,19 +215,19 @@ if st.button("Phân tích"):
                 all_mid += r["mid"]
                 all_long += r["long"]
 
-            st.write("Chi tiết STOP2:", breakdown_numbers(all_stop))
-            st.write("Chi tiết STOP3:", breakdown_numbers(all_mid))
-            st.write("Chi tiết TO4:", breakdown_numbers(all_long))
+            st.write("STOP2:", breakdown_numbers(all_stop))
+            st.write("STOP3:", breakdown_numbers(all_mid))
+            st.write("TO4:", breakdown_numbers(all_long))
 
-        # ===== STREAK 3 =====
         elif gene[-1][1] == 3:
             st.warning("ĐANG STREAK 3")
 
             res = analyze_streak(seq, gene, 3)
             df, s3, _, s4 = summarize(res)
 
-            st.write("Dừng 3:", s3)
-            st.write("Lên ≥4:", s4)
+            col1, col2 = st.columns(2)
+            col1.metric("STOP3", s3)
+            col2.metric("LÊN ≥4", s4)
 
             st.dataframe(df)
 
@@ -217,5 +238,5 @@ if st.button("Phân tích"):
                 all_stop += r["stop"]
                 all_long += r["long"]
 
-            st.write("Chi tiết STOP3:", breakdown_numbers(all_stop))
-            st.write("Chi tiết TO4:", breakdown_numbers(all_long))
+            st.write("STOP3:", breakdown_numbers(all_stop))
+            st.write("TO4:", breakdown_numbers(all_long))
