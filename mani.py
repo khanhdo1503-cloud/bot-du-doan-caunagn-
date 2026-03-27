@@ -4,7 +4,7 @@ import requests
 import re
 from collections import Counter
 
-st.set_page_config(page_title="V41 FULL BREAKDOWN BOT", layout="centered")
+st.set_page_config(page_title="V41 FIXED BOT", layout="centered")
 
 # ------------------ LOAD DATA ------------------
 
@@ -29,6 +29,9 @@ def to_tn(seq):
 # ------------------ GENE ------------------
 
 def get_gene(seq):
+    if not seq:
+        return []
+
     gene = []
     count = 1
     current = seq[0]
@@ -50,18 +53,18 @@ def analyze_streak(seq, gene, target_streak, min_len=5):
     n = len(gene)
     results = {}
 
-    if gene[-1][1] != target_streak:
+    if n == 0 or gene[-1][1] != target_streak:
         return {}
 
     for L in range(min_len, n):
         pattern = gene[-L:]
-        outcomes = []
 
+        outcomes = []
         detail_stop = []
         detail_mid = []
         detail_long = []
 
-        for i in range(n - L - 2):
+        for i in range(n - L - 1):
             if gene[i:i+L] == pattern:
 
                 g = gene[i+L-1]
@@ -71,10 +74,11 @@ def analyze_streak(seq, gene, target_streak, min_len=5):
                 next_gene = gene[i+L]
                 next_len = next_gene[1]
 
-                # lấy vị trí thật trong seq
-                pos = 0
-                for j in range(i+L):
-                    pos += gene[j][1]
+                # ===== FIX POS =====
+                pos = sum(g[1] for g in gene[:i+L])  # start của next streak
+
+                if pos >= len(seq):
+                    continue
 
                 # ===== STREAK 2 =====
                 if target_streak == 2:
@@ -87,11 +91,11 @@ def analyze_streak(seq, gene, target_streak, min_len=5):
                         outcomes.append("STOP3")
 
                     elif next_len >= 4:
-                        detail_long.append(seq[pos:pos+2])
+                        detail_long.append(seq[pos])
                         outcomes.append("TO4")
 
                 # ===== STREAK 3 =====
-                if target_streak == 3:
+                elif target_streak == 3:
                     if next_len == 3:
                         detail_stop.append(seq[pos])
                         outcomes.append("STOP3")
@@ -107,8 +111,6 @@ def analyze_streak(seq, gene, target_streak, min_len=5):
                 "mid": detail_mid,
                 "long": detail_long
             }
-        else:
-            break
 
     return results
 
@@ -122,8 +124,6 @@ def summarize(results):
     total_long = 0
 
     for L, data in results.items():
-        weight = L * L
-
         s = len(data["stop"])
         m = len(data["mid"])
         l = len(data["long"])
@@ -134,27 +134,20 @@ def summarize(results):
 
         rows.append({
             "L": L,
-            "Count": s+m+l,
+            "Count": s + m + l,
             "Stop": s,
             "Mid": m,
-            "Long": l,
-            "Weight": weight
+            "Long": l
         })
 
     return pd.DataFrame(rows), total_stop, total_mid, total_long
 
 def breakdown_numbers(arr):
-    flat = []
-    for x in arr:
-        if isinstance(x, list):
-            flat.extend(x)
-        else:
-            flat.append(x)
-    return dict(Counter(flat))
+    return dict(Counter(arr))
 
 # ------------------ UI ------------------
 
-st.title("🧠 V41 FULL BREAKDOWN BOT")
+st.title("🧠 V41 FIXED BOT")
 
 if st.button("Load Data"):
     data = fetch_sheets_data()
@@ -173,13 +166,17 @@ if st.button("Phân tích"):
         seq = func(data)
         gene = get_gene(seq)
 
+        if not gene:
+            st.warning("Không có dữ liệu")
+            continue
+
         st.write("Gene hiện tại:", gene[-10:])
 
         # ===== STREAK 2 =====
         if gene[-1][1] == 2:
             st.success("ĐANG STREAK 2")
 
-            res = analyze_streak(data, gene, 2)
+            res = analyze_streak(seq, gene, 2)
             df, s2, s3, s4 = summarize(res)
 
             st.write("Dừng 2:", s2)
@@ -188,7 +185,6 @@ if st.button("Phân tích"):
 
             st.dataframe(df)
 
-            # breakdown
             all_stop = []
             all_mid = []
             all_long = []
@@ -203,10 +199,10 @@ if st.button("Phân tích"):
             st.write("Chi tiết TO4:", breakdown_numbers(all_long))
 
         # ===== STREAK 3 =====
-        if gene[-1][1] == 3:
+        elif gene[-1][1] == 3:
             st.warning("ĐANG STREAK 3")
 
-            res = analyze_streak(data, gene, 3)
+            res = analyze_streak(seq, gene, 3)
             df, s3, _, s4 = summarize(res)
 
             st.write("Dừng 3:", s3)
