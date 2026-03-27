@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
-from collections import defaultdict, Counter
+from collections import Counter
 
-st.set_page_config(page_title="V42 FIXED BOT", layout="centered")
+st.set_page_config(page_title="V43 FINAL BOT", layout="centered")
 
 # ------------------ LOAD ------------------
 
@@ -44,7 +44,7 @@ def get_gene(seq):
     gene.append((current, count))
     return gene
 
-# ------------------ MATCH ------------------
+# ------------------ MATCH (FIXED CORE) ------------------
 
 def find_matches(gene, data, target_streak, min_len=5):
     results = {}
@@ -73,30 +73,30 @@ def find_matches(gene, data, target_streak, min_len=5):
                 if pos >= len(data):
                     continue
 
-                seq_nums = []
-                for k in range(next_len):
-                    if pos + k < len(data):
-                        seq_nums.append(data[pos + k])
+                # ✅ FIX QUAN TRỌNG: chỉ lấy 1 số duy nhất
+                next_number = data[pos]
 
-                # ===== LOGIC CHUẨN =====
+                # ===== LOGIC =====
                 if target_streak == 2:
                     if next_len <= 2:
                         outcomes.append("STOP_2")
-                        stop2_nums += seq_nums
+                        stop2_nums.append(next_number)
+
                     elif next_len == 3:
                         outcomes.append("STOP_3")
-                        stop3_nums += seq_nums
+                        stop3_nums.append(next_number)
+
                     else:
                         outcomes.append("TO_4+")
-                        to4_nums += seq_nums
+                        to4_nums.append(next_number)
 
                 elif target_streak == 3:
                     if next_len == 3:
                         outcomes.append("STOP_3")
-                        stop3_nums += seq_nums
+                        stop3_nums.append(next_number)
                     else:
                         outcomes.append("TO_4+")
-                        to4_nums += seq_nums
+                        to4_nums.append(next_number)
 
         if outcomes:
             results[L] = {
@@ -162,7 +162,7 @@ def analyze(results):
 
 # ------------------ UI ------------------
 
-st.title("🧠 V42 FIXED BOT")
+st.title("🧠 V43 FINAL BOT")
 
 if st.button("☁️ Load từ Google Sheets"):
     data_from_sheets = fetch_sheets_data()
@@ -214,7 +214,7 @@ if st.button("Phân tích"):
 
                 st.dataframe(result["table"])
 
-                # ===== CHI TIẾT SỐ =====
+                # ===== CHI TIẾT SỐ (CHUẨN FIX) =====
                 st.write("🎯 CHI TIẾT SỐ:")
 
                 all_stop2 = []
