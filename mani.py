@@ -44,33 +44,44 @@ if "probs" not in st.session_state:
     st.session_state.probs = None
 
 if "history" not in st.session_state:
-    st.session_state.history = []  # lưu dự đoán
+    st.session_state.history = []
 
 if "last_len" not in st.session_state:
     st.session_state.last_len = 0
 
 # =========================
-# UI
+# TITLE
 # =========================
-st.title("🧠 Fantan Bot + Tracking")
+st.title("🧠 Fantan Bot (No Lag UI)")
 
-if st.button("☁️ Load Data"):
-    data = load_data()
-    st.session_state.data_text = "".join(str(x) for x in data)
+# =========================
+# FORM INPUT (QUAN TRỌNG)
+# =========================
+with st.form("data_form"):
 
-data_text = st.text_area("📥 DATA", value=st.session_state.data_text, height=150)
-st.session_state.data_text = data_text
+    data_text = st.text_area(
+        "📥 DATA",
+        value=st.session_state.data_text,
+        height=150
+    )
 
-values = parse_data(data_text)
+    submitted = st.form_submit_button("💾 Cập nhật data")
+
+    if submitted:
+        st.session_state.data_text = data_text
+
+# =========================
+# PARSE
+# =========================
+values = parse_data(st.session_state.data_text)
 cur_len = len(values)
 
 st.write(f"📊 Tổng data: {cur_len}")
 
 # =========================
-# HANDLE DELETE DATA
+# HANDLE DELETE
 # =========================
 if cur_len < st.session_state.last_len:
-    # xóa history thừa
     st.session_state.history = [
         h for h in st.session_state.history if h["len"] <= cur_len
     ]
@@ -78,7 +89,7 @@ if cur_len < st.session_state.last_len:
 st.session_state.last_len = cur_len
 
 # =========================
-# UI 20 VÁN
+# HIỂN THỊ 20 VÁN
 # =========================
 st.subheader("📋 20 VÁN GẦN NHẤT")
 
@@ -109,8 +120,8 @@ if st.button("🚀 RUN BOT"):
 
     st.session_state.probs = probs
 
-    # lưu prediction
     top2 = np.argsort(probs)[-2:][::-1]
+
     st.session_state.history.append({
         "len": cur_len,
         "pick": [top2[0]+1, top2[1]+1]
@@ -135,14 +146,14 @@ if st.session_state.probs is not None:
     st.success(f"👉 {top2[0]+1} + {top2[1]+1}")
 
 # =========================
-# TÍNH WIN / LOSS
+# WIN/LOSS
 # =========================
 win = 0
 loss = 0
 
 for h in st.session_state.history:
     if h["len"] < len(values):
-        actual = values[h["len"]]  # ván tiếp theo
+        actual = values[h["len"]]
         if actual in h["pick"]:
             win += 1
         else:
@@ -151,15 +162,11 @@ for h in st.session_state.history:
 total = win + loss
 rate = (win / total * 100) if total > 0 else 0
 
-# =========================
-# UI BỘ ĐẾM
-# =========================
 st.markdown("---")
 st.subheader("📊 BỘ ĐẾM")
 
 c1, c2, c3, c4 = st.columns(4)
-
-c1.metric("Tổng ván", total)
+c1.metric("Tổng", total)
 c2.metric("Thắng", win)
 c3.metric("Thua", loss)
 c4.metric("Winrate", f"{rate:.1f}%")
