@@ -1,240 +1,102 @@
-
 import streamlit as st
 import pandas as pd
-import requests
-import re
-from collections import Counter
+import numpy as np
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
 
-st.set_page_config(page_title="V43 FINAL BOT", layout="centered")
+# =========================
+# CONFIG
+# =========================
+WINDOW = 7
+CONF_THRESHOLD = 0.55
 
-# ------------------ LOAD ------------------
+# =========================
+# LOAD DATA
+# =========================
+@st.cache_data
+def load_data(file):
+    data = pd.read_csv(file)
+    values = data.iloc[:, 0].dropna().tolist()
+    values = [int(x)-1 for x in values]  # map 1-4 -> 0-3
+    return values
 
-def fetch_sheets_data():
-    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
-    try:
-        res = requests.get(url, timeout=10)
-        if res.status_code == 200:
-            return "".join(re.findall(r'[1-4]', res.text))
-    except:
-        return ""
-    return ""
+# =========================
+# CREATE DATASET
+# =========================
+def create_dataset(values, window):
+    X, y = [], []
+    for i in range(len(values) - window):
+        X.append(values[i:i+window])
+        y.append(values[i+window])
+    return np.array(X), np.array(y)
 
-# ------------------ CONVERT ------------------
+# =========================
+# BUILD MODEL
+# =========================
+def build_model(window):
+    model = Sequential()
+    model.add(LSTM(64, return_sequences=True, input_shape=(window,1)))
+    model.add(Dropout(0.2))
+    model.add(LSTM(32))
+    model.add(Dropout(0.2))
+    model.add(Dense(4, activation='softmax'))
 
-def to_cl(seq):
-    return ["C" if x % 2 == 0 else "L" for x in seq]
+    model.compile(
+        loss='sparse_categorical_crossentropy',
+        optimizer='adam',
+        metrics=['accuracy']
+    )
+    return model
 
-def to_tn(seq):
-    return ["T" if x > 2 else "X" for x in seq]
+# =========================
+# UI
+# =========================
+st.title("🧠 Fantan Bot AI")
 
-# ------------------ GENE ------------------
+uploaded_file = st.file_uploader("Upload file CSV", type=["csv"])
 
-def get_gene(seq):
-    gene = []
-    count = 1
-    current = seq[0]
+if uploaded_file:
+    values = load_data(uploaded_file)
 
-    for i in range(1, len(seq)):
-        if seq[i] == current:
-            count += 1
-        else:
-            gene.append((current, count))
-            current = seq[i]
-            count = 1
+    st.success(f"Loaded {len(values)} data points")
 
-    gene.append((current, count))
-    return gene
+    X, y = create_dataset(values, WINDOW)
+    X = X.reshape((X.shape[0], X.shape[1], 1))
 
-# ------------------ MATCH (FIXED CORE) ------------------
+    if st.button("Train Model"):
+        model = build_model(WINDOW)
+        model.fit(X, y, epochs=10, batch_size=32, verbose=0)
 
-def find_matches(gene, data, target_streak, min_len=5):
-    results = {}
-    n = len(gene)
+        st.session_state.model = model
+        st.success("Model trained xong ✅")
 
-    if gene[-1][1] != target_streak:
-        return {}
+# =========================
+# PREDICT
+# =========================
+if "model" in st.session_state:
 
-    for L in range(min_len, n):
-        pattern = gene[-L:]
+    st.subheader("🔮 Dự đoán ván tiếp theo")
 
-        outcomes = []
-        stop2_nums = []
-        stop3_nums = []
-        to4_nums = []
+    values = load_data(uploaded_file)
 
-        for i in range(n - L - 1):
-            if gene[i:i+L] == pattern:
+    input_seq = values[-WINDOW:]
+    input_seq = np.array(input_seq).reshape((1, WINDOW, 1))
 
-                if gene[i+L-1][1] != target_streak:
-                    continue
+    pred = st.session_state.model.predict(input_seq, verbose=0)[0]
 
-                next_len = gene[i+L][1]
+    choice = np.argmax(pred)
+    confidence = np.max(pred)
 
-                pos = sum(g[1] for g in gene[:i+L])
-                if pos >= len(data):
-                    continue
+    st.metric("Dự đoán", choice + 1)
+    st.metric("Confidence", f"{confidence*100:.2f}%")
 
-                # ✅ FIX QUAN TRỌNG: chỉ lấy 1 số duy nhất
-                next_number = data[pos]
+    # hiển thị xác suất chi tiết
+    st.write("### Chi tiết xác suất:")
+    for i, p in enumerate(pred):
+        st.write(f"{i+1}: {p*100:.2f}%")
 
-                # ===== LOGIC =====
-                if target_streak == 2:
-                    if next_len <= 2:
-                        outcomes.append("STOP_2")
-                        stop2_nums.append(next_number)
-
-                    elif next_len == 3:
-                        outcomes.append("STOP_3")
-                        stop3_nums.append(next_number)
-
-                    else:
-                        outcomes.append("TO_4+")
-                        to4_nums.append(next_number)
-
-                elif target_streak == 3:
-                    if next_len == 3:
-                        outcomes.append("STOP_3")
-                        stop3_nums.append(next_number)
-                    else:
-                        outcomes.append("TO_4+")
-                        to4_nums.append(next_number)
-
-        if outcomes:
-            results[L] = {
-                "outcomes": outcomes,
-                "stop2": stop2_nums,
-                "stop3": stop3_nums,
-                "to4": to4_nums
-            }
-        else:
-            break
-
-    return results
-
-# ------------------ ANALYSIS ------------------
-
-def analyze(results):
-    total_weight = 0
-    stop2 = stop3 = to4 = 0
-    score_win = score_lose = 0
-    rows = []
-
-    for L, data in results.items():
-        outcomes = data["outcomes"]
-        weight = L * L
-
-        s2 = outcomes.count("STOP_2")
-        s3 = outcomes.count("STOP_3")
-        s4 = outcomes.count("TO_4+")
-
-        stop2 += s2
-        stop3 += s3
-        to4 += s4
-
-        score_win += s2 * weight
-        score_lose += s4 * weight
-        total_weight += (s2 + s3 + s4) * weight
-
-        rows.append({
-            "Gene Length": L,
-            "Count": len(outcomes),
-            "Stop@2": s2,
-            "Stop@3": s3,
-            "To≥4": s4,
-            "Weight": weight
-        })
-
-    if total_weight == 0:
-        return None
-
-    p_win = score_win / total_weight
-    p_lose = score_lose / total_weight
-    EV = p_win*1 + p_lose*(-2)
-
-    return {
-        "stop2": stop2,
-        "stop3": stop3,
-        "to4": to4,
-        "p_win": round(p_win*100,1),
-        "p_lose": round(p_lose*100,1),
-        "EV": round(EV,3),
-        "table": pd.DataFrame(rows)
-    }
-
-# ------------------ UI ------------------
-
-st.title("🧠 V43 FINAL BOT")
-
-if st.button("☁️ Load từ Google Sheets"):
-    data_from_sheets = fetch_sheets_data()
-    if data_from_sheets:
-        st.session_state["data_input"] = data_from_sheets
-
-raw_input = st.text_area("Nhập dữ liệu", value=st.session_state.get("data_input", ""))
-
-if st.button("Phân tích"):
-    data = [int(x) for x in raw_input if x in "1234"]
-
-    if len(data) < 200:
-        st.warning("Cần ít nhất 200 data")
-        st.stop()
-
-    st.write("📊 Tổng data:", len(data))
-
-    for name, func in [("CHẴN/LẺ", to_cl), ("TO/NHỎ", to_tn)]:
-        st.subheader(name)
-
-        seq = func(data)
-        gene = get_gene(seq)
-
-        st.write("Gene:", " ".join([f"{x}{y}" for x,y in gene[-10:]]))
-
-        current_streak = gene[-1][1]
-
-        if current_streak in [2, 3]:
-            st.success(f"🚨 STREAK = {current_streak} → PHÂN TÍCH")
-
-            matches = find_matches(gene, data, current_streak)
-            result = analyze(matches)
-
-            if result:
-                st.write("🟢 Stop2:", result["stop2"])
-                st.write("⚖️ Stop3:", result["stop3"])
-                st.write("💀 To4+:", result["to4"])
-
-                st.metric("Win %", result["p_win"])
-                st.metric("Lose %", result["p_lose"])
-                st.metric("EV", result["EV"])
-
-                if result["EV"] > 0 and result["p_lose"] < 35:
-                    st.success("🟢 NÊN ĐÁNH")
-                elif result["p_lose"] > 40:
-                    st.error("🔴 NÉ GẤP")
-                else:
-                    st.warning("⚠️ KHÔNG RÕ")
-
-                st.dataframe(result["table"])
-
-                # ===== CHI TIẾT SỐ (CHUẨN FIX) =====
-                st.write("🎯 CHI TIẾT SỐ:")
-
-                all_stop2 = []
-                all_stop3 = []
-                all_to4 = []
-
-                for r in matches.values():
-                    all_stop2 += r["stop2"]
-                    all_stop3 += r["stop3"]
-                    all_to4 += r["to4"]
-
-                if all_stop2:
-                    st.write("🟢 STOP2:", dict(Counter(all_stop2)))
-
-                if all_stop3:
-                    st.write("⚖️ STOP3:", dict(Counter(all_stop3)))
-
-                if all_to4:
-                    st.write("💀 TO4+:", dict(Counter(all_to4)))
-
-        else:
-            st.info("⏳ Chưa vào vùng streak mạnh (2 hoặc 3)")
+    # decision
+    if confidence > CONF_THRESHOLD:
+        st.success("✅ NÊN CHƠI")
+    else:
+        st.warning("❌ BỎ QUA")
