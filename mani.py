@@ -15,68 +15,16 @@ def load_data():
     try:
         df = pd.read_csv(CSV_URL)
         col = pd.to_numeric(df.iloc[:, 0], errors='coerce')
-        return col.dropna().astype(int).tolist()
+        values = col.dropna().astype(int).tolist()
+        return "".join(str(x) for x in values)  # convert thành chuỗi
     except:
-        return []
+        return ""
 
 # =========================
-# INIT
+# PARSE DATA
 # =========================
-if "values" not in st.session_state:
-    st.session_state.values = []
-
-if "model" not in st.session_state:
-    st.session_state.model = None
-
-# =========================
-# UI HEADER
-# =========================
-st.title("🧠 Fantan Bot - Editable Table")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    if st.button("☁️ Load Google Sheet"):
-        st.session_state.values = load_data()
-        st.success("Loaded data")
-
-with col2:
-    if st.button("♻️ Reset"):
-        st.session_state.values = []
-        st.success("Reset xong")
-
-# =========================
-# DATA TABLE (EDIT TRỰC TIẾP)
-# =========================
-st.subheader("📋 DATA (Có thể sửa trực tiếp)")
-
-values = st.session_state.values
-
-# đảm bảo luôn là list
-if not isinstance(values, list):
-    values = []
-
-df = pd.DataFrame(values, columns=["Kết quả"])
-
-edited_df = st.data_editor(
-    df,
-    num_rows="dynamic",  # cho phép thêm dòng
-    use_container_width=True
-)
-
-# =========================
-# LẤY DATA SAU KHI EDIT
-# =========================
-def get_clean_values(df):
-    result = []
-    for x in df["Kết quả"]:
-        try:
-            x = int(x)
-            if x in [1,2,3,4]:
-                result.append(x)
-        except:
-            pass
-    return result
+def parse_data(text):
+    return [int(c) for c in text if c in "1234"]
 
 # =========================
 # DATASET
@@ -89,30 +37,62 @@ def create_dataset(values, window):
     return np.array(X), np.array(y)
 
 # =========================
+# INIT
+# =========================
+if "data_text" not in st.session_state:
+    st.session_state.data_text = ""
+
+# =========================
+# UI
+# =========================
+st.title("🧠 Fantan Bot - Text Mode")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button("☁️ Load Google Sheet"):
+        st.session_state.data_text = load_data()
+        st.success("Đã load data")
+
+with col2:
+    if st.button("♻️ Reset"):
+        st.session_state.data_text = ""
+        st.success("Đã reset")
+
+# =========================
+# DATA INPUT (CHÍNH)
+# =========================
+st.subheader("📥 DATA (sửa trực tiếp tại đây)")
+
+data_text = st.text_area(
+    "Chuỗi data (ví dụ: 123412341234...)",
+    value=st.session_state.data_text,
+    height=250
+)
+
+st.session_state.data_text = data_text
+
+# =========================
 # RUN BOT
 # =========================
 if st.button("🚀 RUN BOT"):
 
-    clean_values = get_clean_values(edited_df)
+    values = parse_data(data_text)
 
-    if len(clean_values) == 0:
+    if len(values) == 0:
         st.error("❌ Data không hợp lệ")
         st.stop()
 
-    st.session_state.values = clean_values
+    st.success(f"Data hợp lệ: {len(values)} số")
 
-    st.success(f"Data hợp lệ: {len(clean_values)} dòng")
+    if len(values) > WINDOW:
 
-    if len(clean_values) > WINDOW:
-
-        X, y = create_dataset(clean_values, WINDOW)
+        X, y = create_dataset(values, WINDOW)
 
         model = RandomForestClassifier(n_estimators=200)
         model.fit(X, y)
 
-        st.session_state.model = model
-
-        seq = np.array(clean_values[-WINDOW:]).reshape(1, -1)
+        seq = np.array(values[-WINDOW:]).reshape(1, -1)
         pred = model.predict_proba(seq)[0]
 
         choice = int(np.argmax(pred))
@@ -132,7 +112,7 @@ if st.button("🚀 RUN BOT"):
         st.warning("⚠️ Chưa đủ data")
 
 # =========================
-# THỐNG KÊ
+# INFO
 # =========================
-st.divider()
-st.write(f"📊 Tổng data: {len(st.session_state.values)}")
+values = parse_data(data_text)
+st.write(f"📊 Tổng data: {len(values)}")
