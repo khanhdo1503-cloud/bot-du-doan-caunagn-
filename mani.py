@@ -3,9 +3,6 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 
-# =========================
-# CONFIG
-# =========================
 WINDOW = 7
 CONF_THRESHOLD = 0.55
 
@@ -17,14 +14,33 @@ CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtE
 def load_data():
     try:
         df = pd.read_csv(CSV_URL)
-        values = pd.to_numeric(df.iloc[:, 0], errors='coerce')
-        values = values.dropna().astype(int).tolist()
-        return values
+        col = pd.to_numeric(df.iloc[:, 0], errors='coerce')
+        return col.dropna().astype(int).tolist()
     except:
         return []
 
 # =========================
-# INIT SESSION (CỨNG)
+# SAFE GET VALUES (QUAN TRỌNG NHẤT)
+# =========================
+def get_values():
+    v = st.session_state.get("values", [])
+
+    # ép sạch tuyệt đối
+    if not isinstance(v, list):
+        return []
+
+    # loại bỏ phần tử lỗi nếu có
+    clean = []
+    for x in v:
+        try:
+            clean.append(int(x))
+        except:
+            pass
+
+    return clean
+
+# =========================
+# INIT
 # =========================
 if "values" not in st.session_state:
     st.session_state.values = []
@@ -32,35 +48,24 @@ if "values" not in st.session_state:
 if "model" not in st.session_state:
     st.session_state.model = None
 
-# luôn đảm bảo values là list
-if type(st.session_state.values) != list:
-    st.session_state.values = []
-
-values = st.session_state.values
-
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan Bot (Stable V2)")
+st.title("🧠 Fantan Bot FINAL")
 
-# =========================
-# LOAD DATA
-# =========================
+# LOAD
 if st.button("🔄 Load Data"):
     data = load_data()
+    st.session_state.values = data if isinstance(data, list) else []
+    st.success(f"Loaded {len(st.session_state.values)} data")
 
-    if isinstance(data, list):
-        st.session_state.values = data
-        st.success(f"Loaded {len(data)} data")
-    else:
-        st.error("Load data thất bại")
-
-values = st.session_state.values
+# LUÔN dùng get_values
+values = get_values()
 
 # =========================
-# CHECK DATA
+# CHECK
 # =========================
-if not values:
+if len(values) == 0:
     st.warning("👉 Bấm Load Data trước")
     st.stop()
 
@@ -97,19 +102,16 @@ if len(values) > WINDOW:
         st.success("Train xong")
 
 # =========================
-# ADD DATA (SIÊU AN TOÀN)
+# ADD DATA
 # =========================
 st.subheader("➕ Nhập data")
 
 new_value = st.number_input("1-4", 1, 4)
 
 if st.button("➕ Thêm"):
-
-    if type(st.session_state.values) != list:
-        st.session_state.values = []
-
-    st.session_state.values = st.session_state.values + [int(new_value)]
-
+    v = get_values()
+    v.append(int(new_value))
+    st.session_state.values = v
     st.success(f"Đã thêm {new_value}")
 
 # =========================
@@ -119,11 +121,11 @@ if st.session_state.model is not None:
 
     st.subheader("🔮 Dự đoán")
 
-    if len(st.session_state.values) >= WINDOW:
+    v = get_values()
 
-        seq = st.session_state.values[-WINDOW:]
-        seq = np.array(seq).reshape(1, -1)
+    if len(v) >= WINDOW:
 
+        seq = np.array(v[-WINDOW:]).reshape(1, -1)
         pred = st.session_state.model.predict_proba(seq)[0]
 
         choice = int(np.argmax(pred))
