@@ -12,21 +12,23 @@ WINDOW = 15
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
 
 # =========================
-# LOAD DATA
+# SAFE LOAD DATA
 # =========================
 def load_data():
     try:
         df = pd.read_csv(CSV_URL)
-        col = pd.to_numeric(df.iloc[:, 0], errors='coerce')
+        col = pd.to_numeric(df.iloc[:, 0], errors="coerce")
         return col.dropna().astype(int).tolist()
     except:
         return []
 
 def parse_data(text):
-    return list(map(int, re.findall(r"[1-4]", text)))
+    if not text:
+        return []
+    return list(map(int, re.findall(r"[1-4]", str(text))))
 
 # =========================
-# FEATURES (MARKOV + STATS)
+# FEATURES
 # =========================
 def calc_frequency(values):
     recent = values[-50:]
@@ -36,41 +38,29 @@ def calc_frequency(values):
 
 def calc_streak(values):
     last_seen = [0,0,0,0]
-    for i,v in enumerate(reversed(values)):
+    for i, v in enumerate(reversed(values)):
         if last_seen[v-1] == 0:
-            last_seen[v-1] = i+1
-    m = max(last_seen) if max(last_seen)>0 else 1
+            last_seen[v-1] = i + 1
+    m = max(last_seen) if max(last_seen) > 0 else 1
     return [x/m for x in last_seen]
 
 def calc_markov(values):
     matrix = np.zeros((4,4))
+
     for i in range(len(values)-1):
         matrix[values[i]-1][values[i+1]-1] += 1
 
-    probs = []
     last = values[-1] - 1
-
     row = matrix[last]
     total = np.sum(row)
 
     if total == 0:
-        return [0.25]*4
+        return [0.25, 0.25, 0.25, 0.25]
 
-    probs = row / total
-    return probs.tolist()
-
-# =========================
-# DATASET
-# =========================
-def create_dataset(values, window):
-    X, y = [], []
-    for i in range(len(values) - window):
-        X.append(values[i:i+window])
-        y.append(values[i+window] - 1)
-    return np.array(X), np.array(y)
+    return (row / total).tolist()
 
 # =========================
-# SESSION STATE
+# SESSION STATE SAFE INIT
 # =========================
 if "data_text" not in st.session_state:
     st.session_state.data_text = ""
@@ -88,16 +78,15 @@ if "last_len" not in st.session_state:
     st.session_state.last_len = 0
 
 # =========================
-# FIX HISTORY
+# CLEAN HISTORY
 # =========================
 for h in st.session_state.history:
-    if "result" not in h:
-        h["result"] = None
+    h.setdefault("result", None)
 
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan BOT Stable (No TensorFlow)")
+st.title("🧠 Fantan BOT Stable (DEPLOY SAFE)")
 
 col1, col2 = st.columns(2)
 
@@ -126,7 +115,7 @@ cur_len = len(values)
 st.write(f"📊 Data: {cur_len}")
 
 # =========================
-# LAST 20 DISPLAY
+# LAST 20
 # =========================
 st.subheader("📋 20 ván gần nhất")
 
@@ -157,33 +146,36 @@ if st.button("🚀 RUN BOT"):
         st.stop()
 
     # dataset
-    X, y = create_dataset(values, WINDOW)
+    X, y = [], []
+    for i in range(len(values) - WINDOW):
+        X.append(values[i:i+WINDOW])
+        y.append(values[i+WINDOW] - 1)
 
-    # model init
+    X = np.array(X)
+    y = np.array(y)
+
+    # model SAFE
     if st.session_state.model is None:
         st.session_state.model = RandomForestClassifier(
-            n_estimators=250,
+            n_estimators=200,
             random_state=42
         )
 
     model = st.session_state.model
     model.fit(X, y)
 
-    # prediction
     seq = np.array(values[-WINDOW:]).reshape(1, -1)
     ml_probs = model.predict_proba(seq)[0]
 
-    # features
     freq = calc_frequency(values)
     streak = calc_streak(values)
     markov = calc_markov(values)
 
-    # ensemble (NON-ML SAFE)
     final = []
     for i in range(4):
         score = (
-            0.45 * ml_probs[i] +
-            0.25 * freq[i] +
+            0.5 * ml_probs[i] +
+            0.2 * freq[i] +
             0.15 * streak[i] +
             0.15 * markov[i]
         )
@@ -203,7 +195,7 @@ if st.button("🚀 RUN BOT"):
     })
 
 # =========================
-# DISPLAY PROBS
+# OUTPUT
 # =========================
 if st.session_state.probs is not None:
 
@@ -223,7 +215,7 @@ win = 0
 loss = 0
 
 for h in st.session_state.history:
-    if h["result"] is not None:
+    if h.get("result") is not None:
         if h["result"] in h["pick"]:
             win += 1
         else:
