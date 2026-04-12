@@ -46,7 +46,7 @@ if "probs" not in st.session_state:
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan Bot (FIXED)")
+st.title("🧠 Fantan Bot (Clean UI FIXED)")
 
 if st.button("☁️ Load Data"):
     data = load_data()
@@ -60,7 +60,7 @@ values = parse_data(data_text)
 st.write(f"📊 Tổng data: {len(values)}")
 
 # =========================
-# HIỂN THỊ 20 VÁN (FIX HTML)
+# HIỂN THỊ 20 VÁN NGANG (FIX 100%)
 # =========================
 st.subheader("📋 20 VÁN GẦN NHẤT")
 
@@ -73,29 +73,17 @@ color_map = {
     4: "#f1c40f"
 }
 
-html = "<div style='display:flex;gap:6px;flex-wrap:wrap'>"
+boxes = "".join([
+    f"<div style='width:35px;height:35px;background:{color_map[v]};color:white;display:flex;align-items:center;justify-content:center;border-radius:6px;font-weight:bold'>{v}</div>"
+    for v in last20
+])
 
-for v in last20:
-    html += f"""
-    <div style='
-        width:35px;
-        height:35px;
-        background:{color_map[v]};
-        color:white;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        border-radius:6px;
-        font-weight:bold;
-    '>{v}</div>
-    """
+html = f"<div style='display:flex;gap:6px;flex-wrap:wrap'>{boxes}</div>"
 
-html += "</div>"
-
-st.markdown(html, unsafe_allow_html=True)  # FIX CHÍNH
+st.markdown(html, unsafe_allow_html=True)
 
 # =========================
-# RUN BOT (KHÔNG BAO GIỜ LỖI)
+# RUN BOT
 # =========================
 if st.button("🚀 RUN BOT"):
 
@@ -103,7 +91,6 @@ if st.button("🚀 RUN BOT"):
         st.warning("❌ Chưa đủ data")
         st.stop()
 
-    # LUÔN TRAIN MỚI → KHÔNG BAO GIỜ mismatch
     X, y = create_dataset(values, WINDOW)
 
     model = RandomForestClassifier(n_estimators=200)
