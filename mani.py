@@ -9,7 +9,7 @@ CONF_THRESHOLD = 0.55
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
 
 # =========================
-# SAFE DATA LAYER (QUAN TRỌNG NHẤT)
+# SAFE DATA LAYER
 # =========================
 def get_values():
     raw = st.session_state.get("values", [])
@@ -74,7 +74,7 @@ with col2:
 values = get_values()
 
 # =========================
-# INPUT
+# DATA INPUT
 # =========================
 st.subheader("📥 DATA INPUT")
 
@@ -146,9 +146,21 @@ if st.button("🚀 RUN BOT"):
         st.warning("Chưa đủ data")
 
 # =========================
-# INFO (KHÔNG BAO GIỜ CRASH)
+# HIỂN THỊ DATA (FIX CHÍNH)
 # =========================
 st.divider()
 
 safe_values = get_values()
+
+st.subheader("📋 DATA HIỆN TẠI")
+
+if safe_values:
+    df_show = pd.DataFrame(safe_values, columns=["Kết quả"])
+    st.dataframe(df_show, height=300)
+else:
+    st.warning("Chưa có data")
+
+# =========================
+# THỐNG KÊ
+# =========================
 st.write(f"📊 Tổng data: {len(safe_values)}")
