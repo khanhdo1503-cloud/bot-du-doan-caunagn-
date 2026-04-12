@@ -1,12 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
+from sklearn.ensemble import RandomForestClassifier
 
-# =========================
-# CONFIG
-# =========================
 WINDOW = 7
 CONF_THRESHOLD = 0.55
 
@@ -17,7 +13,7 @@ CONF_THRESHOLD = 0.55
 def load_data(file):
     data = pd.read_csv(file)
     values = data.iloc[:, 0].dropna().tolist()
-    values = [int(x)-1 for x in values]  # map 1-4 -> 0-3
+    values = [int(x)-1 for x in values]
     return values
 
 # =========================
@@ -31,58 +27,35 @@ def create_dataset(values, window):
     return np.array(X), np.array(y)
 
 # =========================
-# BUILD MODEL
-# =========================
-def build_model(window):
-    model = Sequential()
-    model.add(LSTM(64, return_sequences=True, input_shape=(window,1)))
-    model.add(Dropout(0.2))
-    model.add(LSTM(32))
-    model.add(Dropout(0.2))
-    model.add(Dense(4, activation='softmax'))
-
-    model.compile(
-        loss='sparse_categorical_crossentropy',
-        optimizer='adam',
-        metrics=['accuracy']
-    )
-    return model
-
-# =========================
 # UI
 # =========================
-st.title("🧠 Fantan Bot AI")
+st.title("🧠 Fantan Bot (Light Version)")
 
-uploaded_file = st.file_uploader("Upload file CSV", type=["csv"])
+uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
 if uploaded_file:
     values = load_data(uploaded_file)
-
-    st.success(f"Loaded {len(values)} data points")
+    st.success(f"Loaded {len(values)} data")
 
     X, y = create_dataset(values, WINDOW)
-    X = X.reshape((X.shape[0], X.shape[1], 1))
 
     if st.button("Train Model"):
-        model = build_model(WINDOW)
-        model.fit(X, y, epochs=10, batch_size=32, verbose=0)
-
+        model = RandomForestClassifier(n_estimators=100)
+        model.fit(X, y)
         st.session_state.model = model
-        st.success("Model trained xong ✅")
+        st.success("Model trained ✅")
 
 # =========================
 # PREDICT
 # =========================
-if "model" in st.session_state:
+if "model" in st.session_state and uploaded_file:
 
-    st.subheader("🔮 Dự đoán ván tiếp theo")
+    st.subheader("🔮 Dự đoán")
 
     values = load_data(uploaded_file)
+    input_seq = np.array(values[-WINDOW:]).reshape(1, -1)
 
-    input_seq = values[-WINDOW:]
-    input_seq = np.array(input_seq).reshape((1, WINDOW, 1))
-
-    pred = st.session_state.model.predict(input_seq, verbose=0)[0]
+    pred = st.session_state.model.predict_proba(input_seq)[0]
 
     choice = np.argmax(pred)
     confidence = np.max(pred)
@@ -90,12 +63,10 @@ if "model" in st.session_state:
     st.metric("Dự đoán", choice + 1)
     st.metric("Confidence", f"{confidence*100:.2f}%")
 
-    # hiển thị xác suất chi tiết
-    st.write("### Chi tiết xác suất:")
+    st.write("### Xác suất:")
     for i, p in enumerate(pred):
         st.write(f"{i+1}: {p*100:.2f}%")
 
-    # decision
     if confidence > CONF_THRESHOLD:
         st.success("✅ NÊN CHƠI")
     else:
