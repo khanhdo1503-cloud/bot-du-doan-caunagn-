@@ -16,12 +16,12 @@ def load_data():
         df = pd.read_csv(CSV_URL)
         col = pd.to_numeric(df.iloc[:, 0], errors='coerce')
         values = col.dropna().astype(int).tolist()
-        return "".join(str(x) for x in values)  # convert thành chuỗi
+        return "".join(str(x) for x in values)
     except:
         return ""
 
 # =========================
-# PARSE DATA
+# PARSE
 # =========================
 def parse_data(text):
     return [int(c) for c in text if c in "1234"]
@@ -42,51 +42,50 @@ def create_dataset(values, window):
 if "data_text" not in st.session_state:
     st.session_state.data_text = ""
 
+if "result" not in st.session_state:
+    st.session_state.result = None
+
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan Bot - Text Mode")
+st.title("🧠 Fantan Bot (RUN là ra kết quả)")
 
 col1, col2 = st.columns(2)
 
 with col1:
     if st.button("☁️ Load Google Sheet"):
         st.session_state.data_text = load_data()
-        st.success("Đã load data")
 
 with col2:
     if st.button("♻️ Reset"):
         st.session_state.data_text = ""
-        st.success("Đã reset")
+        st.session_state.result = None
 
 # =========================
-# DATA INPUT (CHÍNH)
+# INPUT
 # =========================
-st.subheader("📥 DATA (sửa trực tiếp tại đây)")
+st.subheader("📥 DATA")
 
 data_text = st.text_area(
-    "Chuỗi data (ví dụ: 123412341234...)",
+    "Chuỗi data",
     value=st.session_state.data_text,
-    height=250
+    height=200
 )
 
 st.session_state.data_text = data_text
+
+values = parse_data(data_text)
+
+st.write(f"📊 Tổng data: {len(values)}")
 
 # =========================
 # RUN BOT
 # =========================
 if st.button("🚀 RUN BOT"):
 
-    values = parse_data(data_text)
-
-    if len(values) == 0:
-        st.error("❌ Data không hợp lệ")
-        st.stop()
-
-    st.success(f"Data hợp lệ: {len(values)} số")
-
-    if len(values) > WINDOW:
-
+    if len(values) < WINDOW:
+        st.session_state.result = "NOT_ENOUGH"
+    else:
         X, y = create_dataset(values, WINDOW)
 
         model = RandomForestClassifier(n_estimators=200)
@@ -98,21 +97,28 @@ if st.button("🚀 RUN BOT"):
         choice = int(np.argmax(pred))
         conf = float(np.max(pred))
 
-        st.subheader("🔮 RESULT")
+        st.session_state.result = (choice, conf, pred)
+
+# =========================
+# HIỂN THỊ RESULT (QUAN TRỌNG)
+# =========================
+if st.session_state.result is not None:
+
+    st.subheader("🔮 RESULT")
+
+    if st.session_state.result == "NOT_ENOUGH":
+        st.warning("⚠️ Chưa đủ data")
+    else:
+        choice, conf, pred = st.session_state.result
 
         st.metric("Dự đoán", choice + 1)
         st.metric("Confidence", f"{conf*100:.2f}%")
+
+        st.write("### 📊 Xác suất chi tiết")
+        for i, p in enumerate(pred):
+            st.write(f"{i+1}: {p*100:.2f}%")
 
         if conf > CONF_THRESHOLD:
             st.success("✅ CHƠI")
         else:
             st.warning("❌ BỎ")
-
-    else:
-        st.warning("⚠️ Chưa đủ data")
-
-# =========================
-# INFO
-# =========================
-values = parse_data(data_text)
-st.write(f"📊 Tổng data: {len(values)}")
