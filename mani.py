@@ -28,7 +28,7 @@ def parse_data(text):
     return list(map(int, re.findall(r"[1-4]", text)))
 
 # =========================
-# DATASET (LSTM)
+# DATASET
 # =========================
 def create_dataset(values, window):
     X, y = [], []
@@ -44,12 +44,13 @@ def reshape_lstm(X):
 # MODEL
 # =========================
 def build_model(window):
-    model = Sequential()
-    model.add(LSTM(64, return_sequences=True, input_shape=(window, 1)))
-    model.add(Dropout(0.2))
-    model.add(LSTM(32))
-    model.add(Dense(16, activation="relu"))
-    model.add(Dense(4, activation="softmax"))
+    model = Sequential([
+        LSTM(64, return_sequences=True, input_shape=(window, 1)),
+        Dropout(0.2),
+        LSTM(32),
+        Dense(16, activation="relu"),
+        Dense(4, activation="softmax")
+    ])
 
     model.compile(
         optimizer="adam",
@@ -59,7 +60,7 @@ def build_model(window):
     return model
 
 # =========================
-# SESSION INIT
+# SESSION STATE
 # =========================
 if "data_text" not in st.session_state:
     st.session_state.data_text = ""
@@ -67,11 +68,11 @@ if "data_text" not in st.session_state:
 if "model" not in st.session_state:
     st.session_state.model = None
 
-if "history" not in st.session_state:
-    st.session_state.history = []
-
 if "probs" not in st.session_state:
     st.session_state.probs = None
+
+if "history" not in st.session_state:
+    st.session_state.history = []
 
 if "last_len" not in st.session_state:
     st.session_state.last_len = 0
@@ -86,7 +87,7 @@ for h in st.session_state.history:
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan LSTM BOT v2")
+st.title("🧠 Fantan LSTM BOT (Stable Version)")
 
 col1, col2 = st.columns(2)
 
@@ -101,9 +102,12 @@ with col2:
     if st.button("🗑 Reset"):
         st.session_state.history = []
         st.session_state.model = None
+        st.session_state.probs = None
         st.success("Reset OK")
 
+# =========================
 # INPUT
+# =========================
 with st.form("form"):
     st.text_area("DATA (1-4)", key="data_text", height=150)
     st.form_submit_button("Update")
@@ -112,14 +116,6 @@ values = parse_data(st.session_state.data_text)
 cur_len = len(values)
 
 st.write(f"📊 Data: {cur_len}")
-
-# =========================
-# HISTORY CHECK
-# =========================
-if cur_len < st.session_state.last_len:
-    st.session_state.history = [h for h in st.session_state.history if h["len"] <= cur_len]
-
-st.session_state.last_len = cur_len
 
 # =========================
 # SHOW LAST 20
@@ -144,28 +140,31 @@ st.markdown(
 )
 
 # =========================
-# RUN LSTM BOT
+# TRAIN + PREDICT
 # =========================
 if st.button("🚀 RUN BOT LSTM"):
 
     if len(values) < WINDOW + 5:
-        st.warning("Chưa đủ data cho LSTM")
+        st.warning("Chưa đủ data")
         st.stop()
 
     # dataset
     X, y = create_dataset(values, WINDOW)
     X = reshape_lstm(X)
 
-    # build / train model
-    model = build_model(WINDOW)
-    model.fit(X, y, epochs=15, batch_size=16, verbose=0)
+    # model (cache nhẹ)
+    if st.session_state.model is None:
+        st.session_state.model = build_model(WINDOW)
 
-    st.session_state.model = model
+    model = st.session_state.model
 
-    # prediction input
+    # train (nhẹ epochs để không lag)
+    model.fit(X, y, epochs=8, batch_size=16, verbose=0)
+
+    # predict
     seq = np.array(values[-WINDOW:]).reshape(1, WINDOW, 1)
-
     probs = model.predict(seq, verbose=0)[0]
+
     st.session_state.probs = probs
 
     top2 = np.argsort(probs)[-2:][::-1]
@@ -177,9 +176,10 @@ if st.button("🚀 RUN BOT LSTM"):
     })
 
 # =========================
-# DISPLAY PROBS
+# DISPLAY RESULT
 # =========================
 if st.session_state.probs is not None:
+
     st.subheader("📊 XÁC SUẤT LSTM")
 
     cols = st.columns(4)
@@ -190,7 +190,7 @@ if st.session_state.probs is not None:
     st.success(f"👉 ĐÁNH: {top2[0]+1} + {top2[1]+1}")
 
 # =========================
-# WIN / LOSS
+# WIN LOSS
 # =========================
 win = 0
 loss = 0
