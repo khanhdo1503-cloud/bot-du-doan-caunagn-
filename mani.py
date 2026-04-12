@@ -9,6 +9,32 @@ CONF_THRESHOLD = 0.55
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
 
 # =========================
+# SAFE DATA LAYER (QUAN TRỌNG NHẤT)
+# =========================
+def get_values():
+    raw = st.session_state.get("values", [])
+
+    if not isinstance(raw, list):
+        return []
+
+    clean = []
+    for x in raw:
+        try:
+            x = int(x)
+            if x in [1,2,3,4]:
+                clean.append(x)
+        except:
+            pass
+
+    return clean
+
+def set_values(v):
+    if isinstance(v, list):
+        st.session_state.values = v
+    else:
+        st.session_state.values = []
+
+# =========================
 # LOAD DATA
 # =========================
 def load_data():
@@ -29,43 +55,39 @@ if "model" not in st.session_state:
     st.session_state.model = None
 
 # =========================
-# HEADER
+# UI
 # =========================
-st.title("🧠 Fantan Bot UI")
+st.title("🧠 Fantan Bot UI Stable")
 
 col1, col2 = st.columns(2)
 
 with col1:
     if st.button("☁️ Load Google Sheet"):
-        st.session_state.values = load_data()
+        set_values(load_data())
         st.success("Loaded data")
 
 with col2:
-    if st.button("♻️ Refresh Data"):
-        st.session_state.values = []
-        st.success("Reset data")
+    if st.button("♻️ Reset Data"):
+        set_values([])
+        st.success("Reset xong")
 
-values = st.session_state.values
+values = get_values()
 
 # =========================
-# DATA INPUT
+# INPUT
 # =========================
 st.subheader("📥 DATA INPUT")
 
 data_input = st.text_area(
-    "Dán data vào đây (ví dụ: 123412341234...)",
+    "Dán chuỗi số (ví dụ: 123412341234...)",
     height=200
 )
 
 # =========================
-# PROCESS INPUT
+# PARSE
 # =========================
 def parse_input(text):
-    result = []
-    for char in text:
-        if char in ["1", "2", "3", "4"]:
-            result.append(int(char))
-    return result
+    return [int(c) for c in text if c in "1234"]
 
 # =========================
 # DATASET
@@ -84,27 +106,27 @@ if st.button("🚀 RUN BOT"):
 
     new_values = parse_input(data_input)
 
-    if len(new_values) == 0:
-        st.error("❌ Không đọc được dữ liệu")
+    if not new_values:
+        st.error("❌ Data không hợp lệ")
         st.stop()
 
-    # update data
-    st.session_state.values.extend(new_values)
-    values = st.session_state.values
+    v = get_values()
+    v.extend(new_values)
+    set_values(v)
 
     st.success(f"Đã thêm {len(new_values)} giá trị")
 
     # TRAIN + PREDICT
-    if len(values) > WINDOW:
+    if len(v) > WINDOW:
 
-        X, y = create_dataset(values, WINDOW)
+        X, y = create_dataset(v, WINDOW)
 
         model = RandomForestClassifier(n_estimators=200)
         model.fit(X, y)
 
         st.session_state.model = model
 
-        seq = np.array(values[-WINDOW:]).reshape(1, -1)
+        seq = np.array(v[-WINDOW:]).reshape(1, -1)
         pred = model.predict_proba(seq)[0]
 
         choice = int(np.argmax(pred))
@@ -116,15 +138,17 @@ if st.button("🚀 RUN BOT"):
         st.metric("Confidence", f"{conf*100:.2f}%")
 
         if conf > CONF_THRESHOLD:
-            st.success("✅ NÊN CHƠI")
+            st.success("✅ CHƠI")
         else:
-            st.warning("❌ BỎ QUA")
+            st.warning("❌ BỎ")
 
     else:
         st.warning("Chưa đủ data")
 
 # =========================
-# INFO
+# INFO (KHÔNG BAO GIỜ CRASH)
 # =========================
 st.divider()
-st.write(f"📊 Tổng data: {len(st.session_state.values)}")
+
+safe_values = get_values()
+st.write(f"📊 Tổng data: {len(safe_values)}")
