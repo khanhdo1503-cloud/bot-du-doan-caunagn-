@@ -20,23 +20,18 @@ def load_data():
         return []
 
 # =========================
-# SAFE GET VALUES (QUAN TRỌNG NHẤT)
+# SAFE VALUES
 # =========================
 def get_values():
     v = st.session_state.get("values", [])
-
-    # ép sạch tuyệt đối
     if not isinstance(v, list):
         return []
-
-    # loại bỏ phần tử lỗi nếu có
     clean = []
     for x in v:
         try:
             clean.append(int(x))
         except:
             pass
-
     return clean
 
 # =========================
@@ -51,20 +46,15 @@ if "model" not in st.session_state:
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan Bot FINAL")
+st.title("🧠 Fantan Bot AUTO")
 
 # LOAD
 if st.button("🔄 Load Data"):
-    data = load_data()
-    st.session_state.values = data if isinstance(data, list) else []
+    st.session_state.values = load_data()
     st.success(f"Loaded {len(st.session_state.values)} data")
 
-# LUÔN dùng get_values
 values = get_values()
 
-# =========================
-# CHECK
-# =========================
 if len(values) == 0:
     st.warning("👉 Bấm Load Data trước")
     st.stop()
@@ -75,8 +65,7 @@ if len(values) == 0:
 st.subheader("📊 Data")
 
 st.write(f"Tổng: {len(values)}")
-
-st.dataframe(pd.DataFrame(values, columns=["Kết quả"]), height=300)
+st.dataframe(pd.DataFrame(values, columns=["Kết quả"]), height=250)
 
 # =========================
 # DATASET
@@ -89,47 +78,53 @@ def create_dataset(values, window):
     return np.array(X), np.array(y)
 
 # =========================
-# TRAIN
+# NHẬP NHIỀU DATA
 # =========================
-if len(values) > WINDOW:
-    if st.button("🧠 Train"):
-        X, y = create_dataset(values, WINDOW)
+st.subheader("➕ Nhập nhiều kết quả (cách nhau bằng dấu cách)")
+
+multi_input = st.text_input("Ví dụ: 1 2 4 3 1 1 4")
+
+if st.button("🚀 Cập nhật & Dự đoán"):
+
+    # tách chuỗi
+    try:
+        new_values = [int(x) for x in multi_input.strip().split()]
+        new_values = [x for x in new_values if x in [1,2,3,4]]
+    except:
+        new_values = []
+
+    if len(new_values) == 0:
+        st.error("❌ Input không hợp lệ")
+        st.stop()
+
+    # cập nhật data
+    v = get_values()
+    v.extend(new_values)
+    st.session_state.values = v
+
+    st.success(f"Đã thêm {len(new_values)} giá trị")
+
+    # =========================
+    # AUTO TRAIN
+    # =========================
+    if len(v) > WINDOW:
+        X, y = create_dataset(v, WINDOW)
 
         model = RandomForestClassifier(n_estimators=200)
         model.fit(X, y)
 
         st.session_state.model = model
-        st.success("Train xong")
 
-# =========================
-# ADD DATA
-# =========================
-st.subheader("➕ Nhập data")
-
-new_value = st.number_input("1-4", 1, 4)
-
-if st.button("➕ Thêm"):
-    v = get_values()
-    v.append(int(new_value))
-    st.session_state.values = v
-    st.success(f"Đã thêm {new_value}")
-
-# =========================
-# PREDICT
-# =========================
-if st.session_state.model is not None:
-
-    st.subheader("🔮 Dự đoán")
-
-    v = get_values()
-
-    if len(v) >= WINDOW:
-
+        # =========================
+        # AUTO PREDICT
+        # =========================
         seq = np.array(v[-WINDOW:]).reshape(1, -1)
-        pred = st.session_state.model.predict_proba(seq)[0]
+        pred = model.predict_proba(seq)[0]
 
         choice = int(np.argmax(pred))
         conf = float(np.max(pred))
+
+        st.subheader("🔮 Dự đoán ngay")
 
         st.metric("Kết quả", choice + 1)
         st.metric("Confidence", f"{conf*100:.2f}%")
@@ -140,4 +135,4 @@ if st.session_state.model is not None:
             st.warning("❌ BỎ")
 
     else:
-        st.warning("Chưa đủ data")
+        st.warning("Chưa đủ data để train")
