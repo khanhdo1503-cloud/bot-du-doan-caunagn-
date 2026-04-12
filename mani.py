@@ -3,49 +3,61 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 
+# =========================
+# CONFIG
+# =========================
 WINDOW = 7
 CONF_THRESHOLD = 0.55
 
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
 
 # =========================
-# LOAD DATA
+# LOAD DATA (SAFE)
 # =========================
 @st.cache_data
 def load_data():
     try:
         df = pd.read_csv(CSV_URL)
 
-        # ép về số, loại lỗi
+        if df is None or df.empty:
+            return []
+
         values = pd.to_numeric(df.iloc[:, 0], errors='coerce')
         values = values.dropna().astype(int).tolist()
 
-        return values
+        return values if isinstance(values, list) else []
 
-    except Exception as e:
+    except:
         return []
 
 # =========================
-# INIT
+# INIT SESSION (ANTI CRASH)
 # =========================
 if "values" not in st.session_state:
     st.session_state.values = load_data()
+
+if "model" not in st.session_state:
+    st.session_state.model = None
+
+# ép values luôn là list
+if not isinstance(st.session_state.values, list):
+    st.session_state.values = []
+
+values = st.session_state.values
 
 # =========================
 # UI
 # =========================
 st.title("🧠 Fantan Bot Pro")
 
-# reload button
+# reload
 if st.button("🔄 Reload Data"):
     st.session_state.values = load_data()
     st.success("Đã reload data")
 
-values = st.session_state.values
-
-# check data
-if len(values) == 0:
-    st.error("❌ Không load được data")
+# check data an toàn
+if not values:
+    st.warning("⚠️ Chưa có data hoặc load lỗi")
     st.stop()
 
 # =========================
@@ -58,15 +70,18 @@ st.write(f"🔢 Tổng số data: {len(values)}")
 st.dataframe(pd.DataFrame(values, columns=["Kết quả"]), height=300)
 
 # =========================
-# TRAIN
+# CREATE DATASET
 # =========================
 def create_dataset(values, window):
     X, y = [], []
     for i in range(len(values) - window):
         X.append(values[i:i+window])
-        y.append(values[i+window] - 1)
+        y.append(values[i+window] - 1)  # 1-4 → 0-3
     return np.array(X), np.array(y)
 
+# =========================
+# TRAIN MODEL
+# =========================
 if len(values) > WINDOW:
 
     if st.button("🧠 Train Model"):
@@ -92,26 +107,31 @@ if st.button("➕ Thêm"):
 # =========================
 # PREDICT
 # =========================
-if "model" in st.session_state:
+if st.session_state.model is not None:
 
     st.subheader("🔮 Dự đoán")
 
-    input_seq = st.session_state.values[-WINDOW:]
-    input_seq = np.array(input_seq).reshape(1, -1)
+    if len(st.session_state.values) >= WINDOW:
 
-    pred = st.session_state.model.predict_proba(input_seq)[0]
+        input_seq = st.session_state.values[-WINDOW:]
+        input_seq = np.array(input_seq).reshape(1, -1)
 
-    choice = np.argmax(pred)
-    confidence = np.max(pred)
+        pred = st.session_state.model.predict_proba(input_seq)[0]
 
-    st.metric("🎯 Kết quả", choice + 1)
-    st.metric("🔥 Confidence", f"{confidence*100:.2f}%")
+        choice = np.argmax(pred)
+        confidence = np.max(pred)
 
-    st.write("### 📊 Xác suất")
-    for i, p in enumerate(pred):
-        st.write(f"{i+1}: {p*100:.2f}%")
+        st.metric("🎯 Kết quả", choice + 1)
+        st.metric("🔥 Confidence", f"{confidence*100:.2f}%")
 
-    if confidence > CONF_THRESHOLD:
-        st.success("✅ NÊN CHƠI")
+        st.write("### 📊 Xác suất")
+        for i, p in enumerate(pred):
+            st.write(f"{i+1}: {p*100:.2f}%")
+
+        if confidence > CONF_THRESHOLD:
+            st.success("✅ NÊN CHƠI")
+        else:
+            st.warning("❌ BỎ QUA")
+
     else:
-        st.warning("❌ BỎ QUA")
+        st.warning("⚠️ Chưa đủ data để dự đoán")
