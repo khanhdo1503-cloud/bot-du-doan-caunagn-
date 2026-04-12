@@ -8,14 +8,15 @@ WINDOW = 10
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
 
 # =========================
-# LOAD
+# LOAD DATA
 # =========================
 def load_data():
     try:
         df = pd.read_csv(CSV_URL)
         col = pd.to_numeric(df.iloc[:, 0], errors='coerce')
         return col.dropna().astype(int).tolist()
-    except:
+    except Exception as e:
+        st.error(f"Lỗi load data: {e}")
         return []
 
 # =========================
@@ -35,7 +36,7 @@ def create_dataset(values, window):
     return np.array(X), np.array(y)
 
 # =========================
-# INIT
+# INIT STATE
 # =========================
 if "data_text" not in st.session_state:
     st.session_state.data_text = ""
@@ -52,26 +53,35 @@ if "last_len" not in st.session_state:
 # =========================
 # TITLE
 # =========================
-st.title("🧠 Fantan Bot (No Lag UI)")
+st.title("🧠 Fantan Bot PRO")
 
 # =========================
-# FORM INPUT (QUAN TRỌNG)
+# LOAD BUTTON
+# =========================
+if st.button("☁️ Load Data từ Google Sheet"):
+    data = load_data()
+    if len(data) > 0:
+        st.session_state.data_text = "".join(str(x) for x in data)
+        st.success(f"✅ Load {len(data)} data")
+        st.rerun()
+    else:
+        st.error("❌ Không load được data")
+
+# =========================
+# FORM NHẬP DATA (KHÔNG BỊ RESET)
 # =========================
 with st.form("data_form"):
 
-    data_text = st.text_area(
-        "📥 DATA",
-        value=st.session_state.data_text,
+    st.text_area(
+        "📥 DATA (chỉ gồm 1-4)",
+        key="data_text",
         height=150
     )
 
     submitted = st.form_submit_button("💾 Cập nhật data")
 
-    if submitted:
-        st.session_state.data_text = data_text
-
 # =========================
-# PARSE
+# PARSE DATA
 # =========================
 values = parse_data(st.session_state.data_text)
 cur_len = len(values)
@@ -79,7 +89,7 @@ cur_len = len(values)
 st.write(f"📊 Tổng data: {cur_len}")
 
 # =========================
-# HANDLE DELETE
+# HANDLE DELETE DATA
 # =========================
 if cur_len < st.session_state.last_len:
     st.session_state.history = [
@@ -89,18 +99,23 @@ if cur_len < st.session_state.last_len:
 st.session_state.last_len = cur_len
 
 # =========================
-# HIỂN THỊ 20 VÁN
+# HIỂN THỊ 20 VÁN NGANG
 # =========================
 st.subheader("📋 20 VÁN GẦN NHẤT")
 
-color_map = {1:"#ff4b4b",2:"#4b7bff",3:"#2ecc71",4:"#f1c40f"}
+color_map = {
+    1: "#ff4b4b",
+    2: "#4b7bff",
+    3: "#2ecc71",
+    4: "#f1c40f"
+}
 
 boxes = "".join([
     f"<div style='width:35px;height:35px;background:{color_map[v]};color:white;display:flex;align-items:center;justify-content:center;border-radius:6px;font-weight:bold'>{v}</div>"
     for v in values[-20:]
 ])
 
-st.markdown(f"<div style='display:flex;gap:6px'>{boxes}</div>", unsafe_allow_html=True)
+st.markdown(f"<div style='display:flex;gap:6px;flex-wrap:wrap'>{boxes}</div>", unsafe_allow_html=True)
 
 # =========================
 # RUN BOT
@@ -112,6 +127,7 @@ if st.button("🚀 RUN BOT"):
         st.stop()
 
     X, y = create_dataset(values, WINDOW)
+
     model = RandomForestClassifier(n_estimators=200)
     model.fit(X, y)
 
@@ -128,7 +144,7 @@ if st.button("🚀 RUN BOT"):
     })
 
 # =========================
-# RESULT
+# HIỂN THỊ KẾT QUẢ
 # =========================
 if st.session_state.probs is not None:
 
@@ -143,10 +159,10 @@ if st.session_state.probs is not None:
     col4.metric("4", f"{probs[3]*100:.1f}%")
 
     top2 = np.argsort(probs)[-2:][::-1]
-    st.success(f"👉 {top2[0]+1} + {top2[1]+1}")
+    st.success(f"👉 Gợi ý: {top2[0]+1} + {top2[1]+1}")
 
 # =========================
-# WIN/LOSS
+# TÍNH WIN / LOSS
 # =========================
 win = 0
 loss = 0
@@ -162,11 +178,15 @@ for h in st.session_state.history:
 total = win + loss
 rate = (win / total * 100) if total > 0 else 0
 
+# =========================
+# BỘ ĐẾM
+# =========================
 st.markdown("---")
-st.subheader("📊 BỘ ĐẾM")
+st.subheader("📊 BỘ ĐẾM HIỆU SUẤT")
 
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Tổng", total)
+
+c1.metric("Tổng ván", total)
 c2.metric("Thắng", win)
 c3.metric("Thua", loss)
 c4.metric("Winrate", f"{rate:.1f}%")
