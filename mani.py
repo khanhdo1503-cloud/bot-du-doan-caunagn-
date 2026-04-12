@@ -3,9 +3,7 @@ import pandas as pd
 import numpy as np
 import re
 
-from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
+from sklearn.ensemble import RandomForestClassifier
 
 # =========================
 # CONFIG
@@ -28,6 +26,40 @@ def parse_data(text):
     return list(map(int, re.findall(r"[1-4]", text)))
 
 # =========================
+# FEATURES (MARKOV + STATS)
+# =========================
+def calc_frequency(values):
+    recent = values[-50:]
+    freq = [recent.count(i) for i in [1,2,3,4]]
+    total = sum(freq)
+    return [f/total if total > 0 else 0 for f in freq]
+
+def calc_streak(values):
+    last_seen = [0,0,0,0]
+    for i,v in enumerate(reversed(values)):
+        if last_seen[v-1] == 0:
+            last_seen[v-1] = i+1
+    m = max(last_seen) if max(last_seen)>0 else 1
+    return [x/m for x in last_seen]
+
+def calc_markov(values):
+    matrix = np.zeros((4,4))
+    for i in range(len(values)-1):
+        matrix[values[i]-1][values[i+1]-1] += 1
+
+    probs = []
+    last = values[-1] - 1
+
+    row = matrix[last]
+    total = np.sum(row)
+
+    if total == 0:
+        return [0.25]*4
+
+    probs = row / total
+    return probs.tolist()
+
+# =========================
 # DATASET
 # =========================
 def create_dataset(values, window):
@@ -36,28 +68,6 @@ def create_dataset(values, window):
         X.append(values[i:i+window])
         y.append(values[i+window] - 1)
     return np.array(X), np.array(y)
-
-def reshape_lstm(X):
-    return X.reshape((X.shape[0], X.shape[1], 1))
-
-# =========================
-# MODEL
-# =========================
-def build_model(window):
-    model = Sequential([
-        LSTM(64, return_sequences=True, input_shape=(window, 1)),
-        Dropout(0.2),
-        LSTM(32),
-        Dense(16, activation="relu"),
-        Dense(4, activation="softmax")
-    ])
-
-    model.compile(
-        optimizer="adam",
-        loss="sparse_categorical_crossentropy",
-        metrics=["accuracy"]
-    )
-    return model
 
 # =========================
 # SESSION STATE
@@ -87,7 +97,7 @@ for h in st.session_state.history:
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan LSTM BOT (Stable Version)")
+st.title("🧠 Fantan BOT Stable (No TensorFlow)")
 
 col1, col2 = st.columns(2)
 
@@ -105,9 +115,7 @@ with col2:
         st.session_state.probs = None
         st.success("Reset OK")
 
-# =========================
 # INPUT
-# =========================
 with st.form("form"):
     st.text_area("DATA (1-4)", key="data_text", height=150)
     st.form_submit_button("Update")
@@ -118,7 +126,7 @@ cur_len = len(values)
 st.write(f"📊 Data: {cur_len}")
 
 # =========================
-# SHOW LAST 20
+# LAST 20 DISPLAY
 # =========================
 st.subheader("📋 20 ván gần nhất")
 
@@ -140,9 +148,9 @@ st.markdown(
 )
 
 # =========================
-# TRAIN + PREDICT
+# RUN BOT
 # =========================
-if st.button("🚀 RUN BOT LSTM"):
+if st.button("🚀 RUN BOT"):
 
     if len(values) < WINDOW + 5:
         st.warning("Chưa đủ data")
@@ -150,24 +158,43 @@ if st.button("🚀 RUN BOT LSTM"):
 
     # dataset
     X, y = create_dataset(values, WINDOW)
-    X = reshape_lstm(X)
 
-    # model (cache nhẹ)
+    # model init
     if st.session_state.model is None:
-        st.session_state.model = build_model(WINDOW)
+        st.session_state.model = RandomForestClassifier(
+            n_estimators=250,
+            random_state=42
+        )
 
     model = st.session_state.model
+    model.fit(X, y)
 
-    # train (nhẹ epochs để không lag)
-    model.fit(X, y, epochs=8, batch_size=16, verbose=0)
+    # prediction
+    seq = np.array(values[-WINDOW:]).reshape(1, -1)
+    ml_probs = model.predict_proba(seq)[0]
 
-    # predict
-    seq = np.array(values[-WINDOW:]).reshape(1, WINDOW, 1)
-    probs = model.predict(seq, verbose=0)[0]
+    # features
+    freq = calc_frequency(values)
+    streak = calc_streak(values)
+    markov = calc_markov(values)
 
-    st.session_state.probs = probs
+    # ensemble (NON-ML SAFE)
+    final = []
+    for i in range(4):
+        score = (
+            0.45 * ml_probs[i] +
+            0.25 * freq[i] +
+            0.15 * streak[i] +
+            0.15 * markov[i]
+        )
+        final.append(score)
 
-    top2 = np.argsort(probs)[-2:][::-1]
+    final = np.array(final)
+    final = final / np.sum(final)
+
+    st.session_state.probs = final
+
+    top2 = np.argsort(final)[-2:][::-1]
 
     st.session_state.history.append({
         "len": len(values),
@@ -176,11 +203,11 @@ if st.button("🚀 RUN BOT LSTM"):
     })
 
 # =========================
-# DISPLAY RESULT
+# DISPLAY PROBS
 # =========================
 if st.session_state.probs is not None:
 
-    st.subheader("📊 XÁC SUẤT LSTM")
+    st.subheader("📊 XÁC SUẤT")
 
     cols = st.columns(4)
     for i in range(4):
