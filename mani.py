@@ -17,17 +17,14 @@ CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtE
 def load_data():
     try:
         df = pd.read_csv(CSV_URL)
-
         values = pd.to_numeric(df.iloc[:, 0], errors='coerce')
         values = values.dropna().astype(int).tolist()
-
-        return values if isinstance(values, list) else []
-
+        return values
     except:
         return []
 
 # =========================
-# INIT SESSION
+# INIT SESSION (CỨNG)
 # =========================
 if "values" not in st.session_state:
     st.session_state.values = []
@@ -35,40 +32,49 @@ if "values" not in st.session_state:
 if "model" not in st.session_state:
     st.session_state.model = None
 
-# đảm bảo luôn là list
-if not isinstance(st.session_state.values, list):
-    st.session_state.values = list(st.session_state.values)
+# luôn đảm bảo values là list
+if type(st.session_state.values) != list:
+    st.session_state.values = []
+
+values = st.session_state.values
 
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan Bot Cloud Stable")
+st.title("🧠 Fantan Bot (Stable V2)")
 
 # =========================
-# LOAD DATA BUTTON
+# LOAD DATA
 # =========================
-if st.button("🔄 Load Data từ Google Sheet"):
-    st.session_state.values = load_data()
-    st.success("Đã load data")
+if st.button("🔄 Load Data"):
+    data = load_data()
 
-values = st.session_state.get("values", [])
+    if isinstance(data, list):
+        st.session_state.values = data
+        st.success(f"Loaded {len(data)} data")
+    else:
+        st.error("Load data thất bại")
 
-# kiểm tra data
+values = st.session_state.values
+
+# =========================
+# CHECK DATA
+# =========================
 if not values:
-    st.warning("👉 Bấm 'Load Data' để bắt đầu")
+    st.warning("👉 Bấm Load Data trước")
     st.stop()
 
 # =========================
-# HIỂN THỊ DATA
+# HIỂN THỊ
 # =========================
-st.subheader("📊 Data hiện tại")
+st.subheader("📊 Data")
 
-st.write(f"🔢 Tổng số data: {len(values)}")
+st.write(f"Tổng: {len(values)}")
 
 st.dataframe(pd.DataFrame(values, columns=["Kết quả"]), height=300)
 
 # =========================
-# CREATE DATASET
+# DATASET
 # =========================
 def create_dataset(values, window):
     X, y = [], []
@@ -78,36 +84,31 @@ def create_dataset(values, window):
     return np.array(X), np.array(y)
 
 # =========================
-# TRAIN MODEL
+# TRAIN
 # =========================
 if len(values) > WINDOW:
-
-    if st.button("🧠 Train Model"):
+    if st.button("🧠 Train"):
         X, y = create_dataset(values, WINDOW)
 
         model = RandomForestClassifier(n_estimators=200)
         model.fit(X, y)
 
         st.session_state.model = model
-        st.success("Model trained ✅")
+        st.success("Train xong")
 
 # =========================
-# ADD DATA (FIX HARD)
+# ADD DATA (SIÊU AN TOÀN)
 # =========================
-st.subheader("➕ Nhập kết quả mới")
+st.subheader("➕ Nhập data")
 
-new_value = st.number_input("Nhập (1-4)", min_value=1, max_value=4, step=1)
+new_value = st.number_input("1-4", 1, 4)
 
-if st.button("➕ Thêm data"):
+if st.button("➕ Thêm"):
 
-    # đảm bảo luôn là list
-    if not isinstance(st.session_state.values, list):
+    if type(st.session_state.values) != list:
         st.session_state.values = []
 
-    temp = list(st.session_state.values)
-    temp.append(int(new_value))
-
-    st.session_state.values = temp
+    st.session_state.values = st.session_state.values + [int(new_value)]
 
     st.success(f"Đã thêm {new_value}")
 
@@ -116,29 +117,25 @@ if st.button("➕ Thêm data"):
 # =========================
 if st.session_state.model is not None:
 
-    st.subheader("🔮 Dự đoán ván tiếp theo")
+    st.subheader("🔮 Dự đoán")
 
     if len(st.session_state.values) >= WINDOW:
 
-        input_seq = st.session_state.values[-WINDOW:]
-        input_seq = np.array(input_seq).reshape(1, -1)
+        seq = st.session_state.values[-WINDOW:]
+        seq = np.array(seq).reshape(1, -1)
 
-        pred = st.session_state.model.predict_proba(input_seq)[0]
+        pred = st.session_state.model.predict_proba(seq)[0]
 
         choice = int(np.argmax(pred))
-        confidence = float(np.max(pred))
+        conf = float(np.max(pred))
 
-        st.metric("🎯 Dự đoán", choice + 1)
-        st.metric("🔥 Confidence", f"{confidence*100:.2f}%")
+        st.metric("Kết quả", choice + 1)
+        st.metric("Confidence", f"{conf*100:.2f}%")
 
-        st.write("### 📊 Xác suất")
-        for i, p in enumerate(pred):
-            st.write(f"{i+1}: {p*100:.2f}%")
-
-        if confidence > CONF_THRESHOLD:
-            st.success("✅ NÊN CHƠI")
+        if conf > CONF_THRESHOLD:
+            st.success("✅ CHƠI")
         else:
-            st.warning("❌ BỎ QUA")
+            st.warning("❌ BỎ")
 
     else:
-        st.warning("⚠️ Chưa đủ data để dự đoán")
+        st.warning("Chưa đủ data")
