@@ -28,7 +28,9 @@ def create_dataset(values, window):
         y.append(values[i+window] - 1)
     return np.array(X), np.array(y)
 
-# ===== NÃO PHỤ =====
+# =========================
+# NÃO PHỤ
+# =========================
 def calc_frequency(values, n=50):
     recent = values[-n:]
     freq = [recent.count(i) for i in [1,2,3,4]]
@@ -66,21 +68,21 @@ if "last_len" not in st.session_state:
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan Bot LV5")
+st.title("🧠 Fantan Bot LV5 (Fix Logic)")
 
-colA, colB = st.columns(2)
+col1, col2 = st.columns(2)
 
-with colA:
+with col1:
     if st.button("☁️ Load Data"):
         data = load_data()
-        if len(data)>0:
+        if len(data) > 0:
             st.session_state.data_text = "".join(str(x) for x in data)
             st.rerun()
 
-with colB:
+with col2:
     if st.button("🗑 Reset Win/Loss"):
         st.session_state.history = []
-        st.success("Đã reset hiệu suất")
+        st.success("Đã reset")
 
 # =========================
 # INPUT
@@ -94,7 +96,9 @@ cur_len = len(values)
 
 st.write(f"📊 Tổng data: {cur_len}")
 
-# handle delete
+# =========================
+# HANDLE DELETE
+# =========================
 if cur_len < st.session_state.last_len:
     st.session_state.history = [
         h for h in st.session_state.history if h["len"] <= cur_len
@@ -115,7 +119,7 @@ boxes = "".join([
 st.markdown(f"<div style='display:flex;gap:6px'>{boxes}</div>", unsafe_allow_html=True)
 
 # =========================
-# RUN
+# RUN BOT
 # =========================
 if st.button("🚀 RUN BOT"):
 
@@ -123,6 +127,15 @@ if st.button("🚀 RUN BOT"):
         st.warning("Chưa đủ data")
         st.stop()
 
+    # 🔥 STEP 1: CHECK KẾT QUẢ CŨ
+    if len(st.session_state.history) > 0:
+        last = st.session_state.history[-1]
+
+        if last["len"] < len(values):
+            actual = values[last["len"]]
+            last["result"] = actual
+
+    # 🔥 STEP 2: TRAIN
     X, y = create_dataset(values, WINDOW)
     model = RandomForestClassifier(n_estimators=300)
     model.fit(X, y)
@@ -146,9 +159,11 @@ if st.button("🚀 RUN BOT"):
 
     top2 = np.argsort(final)[-2:][::-1]
 
+    # 🔥 STEP 3: LƯU PREDICTION MỚI
     st.session_state.history.append({
-        "len": cur_len,
-        "pick": [top2[0]+1, top2[1]+1]
+        "len": len(values),
+        "pick": [top2[0]+1, top2[1]+1],
+        "result": None
     })
 
 # =========================
@@ -174,9 +189,8 @@ win = 0
 loss = 0
 
 for h in st.session_state.history:
-    if h["len"] < len(values):
-        actual = values[h["len"]]
-        if actual in h["pick"]:
+    if h["result"] is not None:
+        if h["result"] in h["pick"]:
             win += 1
         else:
             loss += 1
@@ -191,7 +205,7 @@ st.markdown("---")
 st.subheader("📊 HIỆU SUẤT")
 
 if total == 0:
-    st.info("Chưa có ván nào để tính (cần nhập thêm data sau khi dự đoán)")
+    st.info("Chưa có ván nào (cần chạy + nhập data mới)")
 else:
     c1,c2,c3,c4 = st.columns(4)
     c1.metric("Tổng", total)
