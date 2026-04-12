@@ -3,7 +3,10 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 
-WINDOW = 15  # 🔥 tăng tầm nhìn
+# =========================
+# CONFIG
+# =========================
+WINDOW = 15
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
 
 # =========================
@@ -19,13 +22,13 @@ def load_data():
         return []
 
 # =========================
-# PARSE
+# PARSE DATA
 # =========================
 def parse_data(text):
     return [int(c) for c in text if c in "1234"]
 
 # =========================
-# DATASET
+# CREATE DATASET
 # =========================
 def create_dataset(values, window):
     X, y = [], []
@@ -35,13 +38,13 @@ def create_dataset(values, window):
     return np.array(X), np.array(y)
 
 # =========================
-# THỐNG KÊ NÃO PHỤ
+# NÃO PHỤ (THỐNG KÊ)
 # =========================
 def calc_frequency(values, n=50):
     recent = values[-n:]
     freq = [recent.count(i) for i in [1,2,3,4]]
     total = sum(freq)
-    return [f/total if total>0 else 0 for f in freq]
+    return [f/total if total > 0 else 0 for f in freq]
 
 def calc_streak(values):
     last_seen = [0,0,0,0]
@@ -54,10 +57,10 @@ def calc_streak(values):
 def calc_prior(values):
     freq = [values.count(i) for i in [1,2,3,4]]
     total = sum(freq)
-    return [f/total if total>0 else 0 for f in freq]
+    return [f/total if total > 0 else 0 for f in freq]
 
 # =========================
-# INIT STATE
+# INIT SESSION
 # =========================
 if "data_text" not in st.session_state:
     st.session_state.data_text = ""
@@ -74,27 +77,30 @@ if "last_len" not in st.session_state:
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan Bot LV5")
+st.title("🧠 Fantan Bot LV5 (Always Predict)")
 
-if st.button("☁️ Load Data"):
+if st.button("☁️ Load Data từ Google Sheet"):
     data = load_data()
-    if len(data)>0:
+    if len(data) > 0:
         st.session_state.data_text = "".join(str(x) for x in data)
         st.success(f"Load {len(data)} data")
         st.rerun()
+    else:
+        st.error("Không load được data")
 
-with st.form("data_form"):
-    st.text_area("📥 DATA", key="data_text", height=150)
+with st.form("form_data"):
+    st.text_area("📥 DATA (chỉ 1-4)", key="data_text", height=150)
     st.form_submit_button("💾 Cập nhật")
 
+# =========================
+# XỬ LÝ DATA
+# =========================
 values = parse_data(st.session_state.data_text)
 cur_len = len(values)
 
 st.write(f"📊 Tổng data: {cur_len}")
 
-# =========================
-# HANDLE DELETE
-# =========================
+# Handle delete
 if cur_len < st.session_state.last_len:
     st.session_state.history = [
         h for h in st.session_state.history if h["len"] <= cur_len
@@ -103,18 +109,23 @@ if cur_len < st.session_state.last_len:
 st.session_state.last_len = cur_len
 
 # =========================
-# UI 20 VÁN
+# HIỂN THỊ 20 VÁN
 # =========================
 st.subheader("📋 20 VÁN GẦN NHẤT")
 
-color_map = {1:"#ff4b4b",2:"#4b7bff",3:"#2ecc71",4:"#f1c40f"}
+color_map = {
+    1:"#ff4b4b",
+    2:"#4b7bff",
+    3:"#2ecc71",
+    4:"#f1c40f"
+}
 
 boxes = "".join([
     f"<div style='width:35px;height:35px;background:{color_map[v]};color:white;display:flex;align-items:center;justify-content:center;border-radius:6px;font-weight:bold'>{v}</div>"
     for v in values[-20:]
 ])
 
-st.markdown(f"<div style='display:flex;gap:6px'>{boxes}</div>", unsafe_allow_html=True)
+st.markdown(f"<div style='display:flex;gap:6px;flex-wrap:wrap'>{boxes}</div>", unsafe_allow_html=True)
 
 # =========================
 # RUN BOT
@@ -122,7 +133,7 @@ st.markdown(f"<div style='display:flex;gap:6px'>{boxes}</div>", unsafe_allow_htm
 if st.button("🚀 RUN BOT"):
 
     if len(values) < WINDOW:
-        st.warning("Chưa đủ data")
+        st.warning("❌ Chưa đủ data")
         st.stop()
 
     # ML
@@ -130,10 +141,10 @@ if st.button("🚀 RUN BOT"):
     model = RandomForestClassifier(n_estimators=300)
     model.fit(X, y)
 
-    seq = np.array(values[-WINDOW:]).reshape(1,-1)
+    seq = np.array(values[-WINDOW:]).reshape(1, -1)
     ml = model.predict_proba(seq)[0]
 
-    # THỐNG KÊ
+    # NÃO PHỤ
     freq = calc_frequency(values)
     streak = calc_streak(values)
     prior = calc_prior(values)
@@ -142,10 +153,10 @@ if st.button("🚀 RUN BOT"):
     final = []
     for i in range(4):
         score = (
-            0.4*ml[i] +
-            0.25*freq[i] +
-            0.2*streak[i] +
-            0.15*prior[i]
+            0.4 * ml[i] +
+            0.25 * freq[i] +
+            0.2 * streak[i] +
+            0.15 * prior[i]
         )
         final.append(score)
 
@@ -162,7 +173,7 @@ if st.button("🚀 RUN BOT"):
     })
 
 # =========================
-# RESULT
+# HIỂN THỊ KẾT QUẢ
 # =========================
 if st.session_state.probs is not None:
 
@@ -170,26 +181,16 @@ if st.session_state.probs is not None:
 
     st.subheader("📊 XÁC SUẤT")
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("1", f"{probs[0]*100:.1f}%")
-    col2.metric("2", f"{probs[1]*100:.1f}%")
-    col3.metric("3", f"{probs[2]*100:.1f}%")
-    col4.metric("4", f"{probs[3]*100:.1f}%")
+    cols = st.columns(4)
+    for i in range(4):
+        cols[i].metric(str(i+1), f"{probs[i]*100:.1f}%")
 
     top2 = np.argsort(probs)[-2:][::-1]
 
-    # 🎯 CONFIDENCE
-    diff = probs[top2[0]] - probs[top2[1]]
-
-    if probs[top2[0]] > 0.5:
-        st.success(f"🔥 ĐÁNH MẠNH: {top2[0]+1}")
-    elif diff < 0.1:
-        st.warning("⚠️ Kèo nhiễu – cân nhắc bỏ")
-    else:
-        st.success(f"👉 Gợi ý: {top2[0]+1} + {top2[1]+1}")
+    st.success(f"👉 LUÔN ĐÁNH: {top2[0]+1} + {top2[1]+1}")
 
 # =========================
-# WIN/LOSS
+# WIN / LOSS
 # =========================
 win = 0
 loss = 0
@@ -205,11 +206,15 @@ for h in st.session_state.history:
 total = win + loss
 rate = (win / total * 100) if total > 0 else 0
 
+# =========================
+# UI HIỆU SUẤT
+# =========================
 st.markdown("---")
 st.subheader("📊 HIỆU SUẤT")
 
-c1,c2,c3,c4 = st.columns(4)
-c1.metric("Tổng", total)
-c2.metric("Win", win)
-c3.metric("Loss", loss)
+c1, c2, c3, c4 = st.columns(4)
+
+c1.metric("Tổng ván", total)
+c2.metric("Thắng", win)
+c3.metric("Thua", loss)
 c4.metric("Winrate", f"{rate:.1f}%")
