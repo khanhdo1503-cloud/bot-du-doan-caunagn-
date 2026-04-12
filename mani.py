@@ -46,13 +46,22 @@ if "probs" not in st.session_state:
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan Bot (Clean UI FIXED)")
+st.title("🧠 Fantan Bot (Smooth UI)")
 
 if st.button("☁️ Load Data"):
     data = load_data()
     st.session_state.data_text = "".join(str(x) for x in data)
 
-data_text = st.text_area("📥 DATA", value=st.session_state.data_text, height=150)
+# =========================
+# INPUT (KHÔNG RESET)
+# =========================
+data_text = st.text_area(
+    "📥 DATA",
+    value=st.session_state.data_text,
+    height=150,
+    key="data_box"
+)
+
 st.session_state.data_text = data_text
 
 values = parse_data(data_text)
@@ -60,27 +69,18 @@ values = parse_data(data_text)
 st.write(f"📊 Tổng data: {len(values)}")
 
 # =========================
-# HIỂN THỊ 20 VÁN NGANG (FIX 100%)
+# 20 VÁN NGANG
 # =========================
 st.subheader("📋 20 VÁN GẦN NHẤT")
 
-last20 = values[-20:]
-
-color_map = {
-    1: "#ff4b4b",
-    2: "#4b7bff",
-    3: "#2ecc71",
-    4: "#f1c40f"
-}
+color_map = {1:"#ff4b4b",2:"#4b7bff",3:"#2ecc71",4:"#f1c40f"}
 
 boxes = "".join([
     f"<div style='width:35px;height:35px;background:{color_map[v]};color:white;display:flex;align-items:center;justify-content:center;border-radius:6px;font-weight:bold'>{v}</div>"
-    for v in last20
+    for v in values[-20:]
 ])
 
-html = f"<div style='display:flex;gap:6px;flex-wrap:wrap'>{boxes}</div>"
-
-st.markdown(html, unsafe_allow_html=True)
+st.markdown(f"<div style='display:flex;gap:6px;flex-wrap:wrap'>{boxes}</div>", unsafe_allow_html=True)
 
 # =========================
 # RUN BOT
@@ -89,27 +89,26 @@ if st.button("🚀 RUN BOT"):
 
     if len(values) < WINDOW:
         st.warning("❌ Chưa đủ data")
-        st.stop()
+    else:
+        X, y = create_dataset(values, WINDOW)
 
-    X, y = create_dataset(values, WINDOW)
+        model = RandomForestClassifier(n_estimators=200)
+        model.fit(X, y)
 
-    model = RandomForestClassifier(n_estimators=200)
-    model.fit(X, y)
+        seq = np.array(values[-WINDOW:]).reshape(1, -1)
+        probs = model.predict_proba(seq)[0]
 
-    seq = np.array(values[-WINDOW:]).reshape(1, -1)
-
-    probs = model.predict_proba(seq)[0]
-
-    st.session_state.probs = probs
+        st.session_state.probs = probs
 
 # =========================
 # RESULT
 # =========================
 if st.session_state.probs is not None:
 
-    probs = st.session_state.probs
+    st.markdown("---")
+    st.subheader("🔮 RESULT")
 
-    st.subheader("📊 XÁC SUẤT")
+    probs = st.session_state.probs
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -120,5 +119,11 @@ if st.session_state.probs is not None:
 
     top2 = np.argsort(probs)[-2:][::-1]
 
-    st.subheader("🔮 GỢI Ý")
-    st.success(f"{top2[0]+1} + {top2[1]+1}")
+    st.success(f"👉 {top2[0]+1} + {top2[1]+1}")
+
+    # 🔥 AUTO SCROLL XUỐNG
+    st.markdown("""
+        <script>
+            window.scrollTo(0, document.body.scrollHeight);
+        </script>
+    """, unsafe_allow_html=True)
