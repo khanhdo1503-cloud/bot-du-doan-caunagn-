@@ -20,21 +20,6 @@ def load_data():
         return []
 
 # =========================
-# SAFE VALUES
-# =========================
-def get_values():
-    v = st.session_state.get("values", [])
-    if not isinstance(v, list):
-        return []
-    clean = []
-    for x in v:
-        try:
-            clean.append(int(x))
-        except:
-            pass
-    return clean
-
-# =========================
 # INIT
 # =========================
 if "values" not in st.session_state:
@@ -44,28 +29,43 @@ if "model" not in st.session_state:
     st.session_state.model = None
 
 # =========================
-# UI
+# HEADER
 # =========================
-st.title("🧠 Fantan Bot AUTO")
+st.title("🧠 Fantan Bot UI")
 
-# LOAD
-if st.button("🔄 Load Data"):
-    st.session_state.values = load_data()
-    st.success(f"Loaded {len(st.session_state.values)} data")
+col1, col2 = st.columns(2)
 
-values = get_values()
+with col1:
+    if st.button("☁️ Load Google Sheet"):
+        st.session_state.values = load_data()
+        st.success("Loaded data")
 
-if len(values) == 0:
-    st.warning("👉 Bấm Load Data trước")
-    st.stop()
+with col2:
+    if st.button("♻️ Refresh Data"):
+        st.session_state.values = []
+        st.success("Reset data")
+
+values = st.session_state.values
 
 # =========================
-# HIỂN THỊ
+# DATA INPUT
 # =========================
-st.subheader("📊 Data")
+st.subheader("📥 DATA INPUT")
 
-st.write(f"Tổng: {len(values)}")
-st.dataframe(pd.DataFrame(values, columns=["Kết quả"]), height=250)
+data_input = st.text_area(
+    "Dán data vào đây (ví dụ: 123412341234...)",
+    height=200
+)
+
+# =========================
+# PROCESS INPUT
+# =========================
+def parse_input(text):
+    result = []
+    for char in text:
+        if char in ["1", "2", "3", "4"]:
+            result.append(int(char))
+    return result
 
 # =========================
 # DATASET
@@ -78,61 +78,53 @@ def create_dataset(values, window):
     return np.array(X), np.array(y)
 
 # =========================
-# NHẬP NHIỀU DATA
+# RUN BOT
 # =========================
-st.subheader("➕ Nhập nhiều kết quả (cách nhau bằng dấu cách)")
+if st.button("🚀 RUN BOT"):
 
-multi_input = st.text_input("Ví dụ: 1 2 4 3 1 1 4")
-
-if st.button("🚀 Cập nhật & Dự đoán"):
-
-    # tách chuỗi
-    try:
-        new_values = [int(x) for x in multi_input.strip().split()]
-        new_values = [x for x in new_values if x in [1,2,3,4]]
-    except:
-        new_values = []
+    new_values = parse_input(data_input)
 
     if len(new_values) == 0:
-        st.error("❌ Input không hợp lệ")
+        st.error("❌ Không đọc được dữ liệu")
         st.stop()
 
-    # cập nhật data
-    v = get_values()
-    v.extend(new_values)
-    st.session_state.values = v
+    # update data
+    st.session_state.values.extend(new_values)
+    values = st.session_state.values
 
     st.success(f"Đã thêm {len(new_values)} giá trị")
 
-    # =========================
-    # AUTO TRAIN
-    # =========================
-    if len(v) > WINDOW:
-        X, y = create_dataset(v, WINDOW)
+    # TRAIN + PREDICT
+    if len(values) > WINDOW:
+
+        X, y = create_dataset(values, WINDOW)
 
         model = RandomForestClassifier(n_estimators=200)
         model.fit(X, y)
 
         st.session_state.model = model
 
-        # =========================
-        # AUTO PREDICT
-        # =========================
-        seq = np.array(v[-WINDOW:]).reshape(1, -1)
+        seq = np.array(values[-WINDOW:]).reshape(1, -1)
         pred = model.predict_proba(seq)[0]
 
         choice = int(np.argmax(pred))
         conf = float(np.max(pred))
 
-        st.subheader("🔮 Dự đoán ngay")
+        st.subheader("🔮 RESULT")
 
-        st.metric("Kết quả", choice + 1)
+        st.metric("Dự đoán", choice + 1)
         st.metric("Confidence", f"{conf*100:.2f}%")
 
         if conf > CONF_THRESHOLD:
-            st.success("✅ CHƠI")
+            st.success("✅ NÊN CHƠI")
         else:
-            st.warning("❌ BỎ")
+            st.warning("❌ BỎ QUA")
 
     else:
-        st.warning("Chưa đủ data để train")
+        st.warning("Chưa đủ data")
+
+# =========================
+# INFO
+# =========================
+st.divider()
+st.write(f"📊 Tổng data: {len(st.session_state.values)}")
