@@ -3,9 +3,6 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 
-# =========================
-# CONFIG
-# =========================
 WINDOW = 7
 CONF_THRESHOLD = 0.55
 
@@ -14,76 +11,90 @@ CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtE
 # =========================
 # LOAD DATA
 # =========================
+@st.cache_data
 def load_data():
-    df = pd.read_csv(CSV_URL)
-    values = df.iloc[:, 0].dropna().astype(int).tolist()
-    return values
+    try:
+        df = pd.read_csv(CSV_URL)
+
+        # ép về số, loại lỗi
+        values = pd.to_numeric(df.iloc[:, 0], errors='coerce')
+        values = values.dropna().astype(int).tolist()
+
+        return values
+
+    except Exception as e:
+        return []
 
 # =========================
-# CREATE DATASET
+# INIT
 # =========================
-def create_dataset(values, window):
-    X, y = [], []
-    for i in range(len(values) - window):
-        X.append(values[i:i+window])
-        y.append(values[i+window] - 1)  # map về 0-3
-    return np.array(X), np.array(y)
+if "values" not in st.session_state:
+    st.session_state.values = load_data()
 
 # =========================
 # UI
 # =========================
 st.title("🧠 Fantan Bot Pro")
 
-# Load data button
-if st.button("🔄 Load Data từ Google Sheet"):
+# reload button
+if st.button("🔄 Reload Data"):
     st.session_state.values = load_data()
-
-# Nếu chưa load
-if "values" not in st.session_state:
-    st.warning("👉 Bấm Load Data trước")
-    st.stop()
+    st.success("Đã reload data")
 
 values = st.session_state.values
+
+# check data
+if len(values) == 0:
+    st.error("❌ Không load được data")
+    st.stop()
 
 # =========================
 # HIỂN THỊ DATA
 # =========================
-st.subheader("📊 Data hiện tại")
+st.subheader("📊 Data")
 
 st.write(f"🔢 Tổng số data: {len(values)}")
 
-df_show = pd.DataFrame(values, columns=["Kết quả"])
-st.dataframe(df_show, height=300)
+st.dataframe(pd.DataFrame(values, columns=["Kết quả"]), height=300)
 
 # =========================
-# TRAIN MODEL
+# TRAIN
 # =========================
+def create_dataset(values, window):
+    X, y = [], []
+    for i in range(len(values) - window):
+        X.append(values[i:i+window])
+        y.append(values[i+window] - 1)
+    return np.array(X), np.array(y)
+
 if len(values) > WINDOW:
-    X, y = create_dataset(values, WINDOW)
 
     if st.button("🧠 Train Model"):
+        X, y = create_dataset(values, WINDOW)
+
         model = RandomForestClassifier(n_estimators=200)
         model.fit(X, y)
+
         st.session_state.model = model
-        st.success("Model đã train xong ✅")
+        st.success("Model trained ✅")
 
 # =========================
-# NHẬP DATA MỚI
+# ADD NEW DATA
 # =========================
-st.subheader("➕ Nhập kết quả mới")
+st.subheader("➕ Nhập data mới")
 
 new_value = st.number_input("Nhập (1-4)", min_value=1, max_value=4, step=1)
 
-if st.button("➕ Thêm vào data"):
+if st.button("➕ Thêm"):
     st.session_state.values.append(int(new_value))
-    st.success(f"Đã thêm: {new_value}")
+    st.success(f"Đã thêm {new_value}")
 
 # =========================
 # PREDICT
 # =========================
-if "model" in st.session_state and len(st.session_state.values) >= WINDOW:
+if "model" in st.session_state:
 
-    st.subheader("🔮 Dự đoán ván tiếp theo")
+    st.subheader("🔮 Dự đoán")
 
     input_seq = st.session_state.values[-WINDOW:]
     input_seq = np.array(input_seq).reshape(1, -1)
@@ -93,10 +104,10 @@ if "model" in st.session_state and len(st.session_state.values) >= WINDOW:
     choice = np.argmax(pred)
     confidence = np.max(pred)
 
-    st.metric("🎯 Dự đoán", choice + 1)
+    st.metric("🎯 Kết quả", choice + 1)
     st.metric("🔥 Confidence", f"{confidence*100:.2f}%")
 
-    st.write("### 📊 Xác suất chi tiết")
+    st.write("### 📊 Xác suất")
     for i, p in enumerate(pred):
         st.write(f"{i+1}: {p*100:.2f}%")
 
