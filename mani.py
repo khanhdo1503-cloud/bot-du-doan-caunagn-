@@ -4,15 +4,16 @@ import numpy as np
 import re
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
 
 # =========================
 # CONFIG
 # =========================
-WINDOW = 15
+WINDOW = 20
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
 
 # =========================
-# LOAD DATA
+# LOAD
 # =========================
 def load_data():
     try:
@@ -26,31 +27,32 @@ def parse_data(text):
     return list(map(int, re.findall(r"[1-4]", str(text))))
 
 # =========================
-# FEATURES
+# FEATURE ENGINE
 # =========================
-def freq(values):
-    recent = values[-50:]
-    f = [recent.count(i) for i in [1,2,3,4]]
-    s = sum(f)
-    return [x/s if s else 0 for x in f]
+def get_features(values):
 
-def streak(values):
-    last = [0,0,0,0]
+    # frequency
+    freq = [values[-50:].count(i)/50 for i in [1,2,3,4]]
+
+    # streak
+    streak = [0]*4
     for i,v in enumerate(reversed(values)):
-        if last[v-1] == 0:
-            last[v-1] = i+1
-    m = max(last) if max(last) else 1
-    return [x/m for x in last]
+        if streak[v-1] == 0:
+            streak[v-1] = i+1
+    streak = [x/max(streak) for x in streak]
 
-def markov(values):
+    # markov
     m = np.zeros((4,4))
     for i in range(len(values)-1):
         m[values[i]-1][values[i+1]-1] += 1
 
     row = m[values[-1]-1]
-    if row.sum() == 0:
-        return [0.25]*4
-    return (row/row.sum()).tolist()
+    markov = row/row.sum() if row.sum() else np.ones(4)/4
+
+    # recent pattern (last 5)
+    recent = values[-5:]
+
+    return np.concatenate([freq, streak, markov, recent])
 
 # =========================
 # SESSION
@@ -58,14 +60,18 @@ def markov(values):
 if "data_text" not in st.session_state:
     st.session_state.data_text = ""
 
-if "rf_model" not in st.session_state:
-    st.session_state.rf_model = RandomForestClassifier(n_estimators=150)
+if "rf" not in st.session_state:
+    st.session_state.rf = RandomForestClassifier(
+        n_estimators=300,
+        max_depth=10,
+        random_state=42
+    )
 
-if "meta_model" not in st.session_state:
-    st.session_state.meta_model = LogisticRegression(max_iter=200)
+if "meta" not in st.session_state:
+    st.session_state.meta = LogisticRegression(max_iter=300)
 
-if "history" not in st.session_state:
-    st.session_state.history = []
+if "scaler" not in st.session_state:
+    st.session_state.scaler = StandardScaler()
 
 if "probs" not in st.session_state:
     st.session_state.probs = None
@@ -73,7 +79,7 @@ if "probs" not in st.session_state:
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan META AI BOT")
+st.title("🧠 Fantan Smart AI v2 (20k Data Ready)")
 
 col1, col2 = st.columns(2)
 
@@ -86,8 +92,7 @@ with col1:
 
 with col2:
     if st.button("🗑 Reset"):
-        st.session_state.history = []
-        st.success("Reset OK")
+        st.session_state.probs = None
 
 with st.form("form"):
     st.text_area("DATA (1-4)", key="data_text", height=150)
@@ -98,78 +103,77 @@ values = parse_data(st.session_state.data_text)
 st.write(f"📊 Data: {len(values)}")
 
 # =========================
-# RUN BOT
+# RUN
 # =========================
 if st.button("🚀 RUN BOT"):
 
-    if len(values) < WINDOW + 10:
-        st.warning("Chưa đủ data")
+    if len(values) < WINDOW + 100:
+        st.warning("Cần nhiều data hơn để AI hoạt động tốt")
         st.stop()
 
-    rf = st.session_state.rf_model
-    meta = st.session_state.meta_model
+    rf = st.session_state.rf
+    meta = st.session_state.meta
+    scaler = st.session_state.scaler
 
-    meta_X = []
-    meta_y = []
+    X_meta = []
+    y_meta = []
 
     # =========================
-    # BUILD META DATASET
+    # BUILD DATASET
     # =========================
     for i in range(WINDOW, len(values)-1):
 
         seq = values[i-WINDOW:i]
 
-        X_tmp, y_tmp = [], []
-        for j in range(i-WINDOW):
-            X_tmp.append(values[j:j+WINDOW])
-            y_tmp.append(values[j+WINDOW]-1)
+        X_rf = []
+        y_rf = []
 
-        if len(X_tmp) < 10:
+        for j in range(i-WINDOW):
+            X_rf.append(values[j:j+WINDOW])
+            y_rf.append(values[j+WINDOW]-1)
+
+        if len(X_rf) < 50:
             continue
 
-        rf.fit(X_tmp, y_tmp)
-        ml = rf.predict_proba(np.array(seq).reshape(1,-1))[0]
+        rf.fit(X_rf, y_rf)
 
-        f1 = freq(values[:i])
-        f2 = streak(values[:i])
-        f3 = markov(values[:i])
+        ml = rf.predict_proba([seq])[0]
+        feat = get_features(values[:i])
 
-        features = list(ml) + f1 + f2 + f3
+        combined = np.concatenate([ml, feat])
 
-        meta_X.append(features)
-        meta_y.append(values[i]-1)
+        X_meta.append(combined)
+        y_meta.append(values[i]-1)
 
     # =========================
-    # TRAIN META MODEL
+    # TRAIN META
     # =========================
-    if len(meta_X) < 30:
-        st.warning("Data chưa đủ để train AI")
-        st.stop()
-
-    meta.fit(meta_X, meta_y)
+    X_meta = scaler.fit_transform(X_meta)
+    meta.fit(X_meta, y_meta)
 
     # =========================
     # PREDICT
     # =========================
     seq = values[-WINDOW:]
 
-    X_tmp, y_tmp = [], []
+    X_rf = []
+    y_rf = []
+
     for j in range(len(values)-WINDOW):
-        X_tmp.append(values[j:j+WINDOW])
-        y_tmp.append(values[j+WINDOW]-1)
+        X_rf.append(values[j:j+WINDOW])
+        y_rf.append(values[j+WINDOW]-1)
 
-    rf.fit(X_tmp, y_tmp)
+    rf.fit(X_rf, y_rf)
 
-    ml = rf.predict_proba(np.array(seq).reshape(1,-1))[0]
-    f1 = freq(values)
-    f2 = streak(values)
-    f3 = markov(values)
+    ml = rf.predict_proba([seq])[0]
+    feat = get_features(values)
 
-    features = list(ml) + f1 + f2 + f3
+    combined = np.concatenate([ml, feat])
+    combined = scaler.transform([combined])
 
-    final = meta.predict_proba([features])[0]
+    probs = meta.predict_proba(combined)[0]
 
-    st.session_state.probs = final
+    st.session_state.probs = probs
 
 # =========================
 # OUTPUT
@@ -178,7 +182,7 @@ if st.session_state.probs is not None:
 
     probs = st.session_state.probs
 
-    st.subheader("📊 XÁC SUẤT (META AI)")
+    st.subheader("📊 XÁC SUẤT (SMART AI)")
 
     cols = st.columns(4)
     for i in range(4):
@@ -187,8 +191,8 @@ if st.session_state.probs is not None:
     top2 = np.argsort(probs)[-2:][::-1]
     st.success(f"👉 ĐÁNH: {top2[0]+1} + {top2[1]+1}")
 
-    # CONFIDENCE
     conf = sorted(probs)[-1] - sorted(probs)[-2]
+
     st.write(f"🔥 Confidence: {conf:.3f}")
 
     if conf < 0.05:
