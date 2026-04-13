@@ -74,10 +74,13 @@ if "probs" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
+if "last_len" not in st.session_state:
+    st.session_state.last_len = 0
+
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan BOT Stable (main.py version)")
+st.title("🧠 Fantan BOT FINAL (Real Winrate)")
 
 col1, col2 = st.columns(2)
 
@@ -100,8 +103,18 @@ with st.form("form"):
     st.form_submit_button("Update")
 
 values = parse_data(st.session_state.data_text)
+cur_len = len(values)
 
-st.write(f"📊 Data: {len(values)}")
+st.write(f"📊 Data: {cur_len}")
+
+# =========================
+# UPDATE RESULT TỰ ĐỘNG
+# =========================
+if len(st.session_state.history) > 0:
+    last = st.session_state.history[-1]
+
+    if last["result"] is None and cur_len > last["len"]:
+        last["result"] = values[last["len"]]
 
 # =========================
 # LAST 20
@@ -165,6 +178,7 @@ if st.button("🚀 RUN BOT"):
     top2 = np.argsort(final)[-2:][::-1]
 
     st.session_state.history.append({
+        "len": len(values),
         "pick": [top2[0]+1, top2[1]+1],
         "result": None
     })
@@ -184,9 +198,29 @@ if st.session_state.probs is not None:
     st.success(f"👉 ĐÁNH: {t[0]+1} + {t[1]+1}")
 
 # =========================
-# STATS
+# HIỆU SUẤT THẬT
 # =========================
+win = 0
+loss = 0
+
+for h in st.session_state.history:
+    if h["result"] is not None:
+        if h["result"] in h["pick"]:
+            win += 1
+        else:
+            loss += 1
+
+total = win + loss
+rate = (win / total * 100) if total > 0 else 0
+
 st.markdown("---")
 st.subheader("📊 HIỆU SUẤT")
 
-st.info("Running on main.py stable version (Cloud-safe)")
+if total == 0:
+    st.info("Chưa có dữ liệu (RUN → thêm data → RUN)")
+else:
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total", total)
+    c2.metric("Win", win)
+    c3.metric("Loss", loss)
+    c4.metric("Winrate", f"{rate:.1f}%")
