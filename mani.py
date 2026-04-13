@@ -11,7 +11,7 @@ WINDOW = 15
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
 
 # =========================
-# SAFE FUNCTIONS
+# LOAD DATA
 # =========================
 def load_data():
     try:
@@ -50,12 +50,14 @@ def markov(values):
 
     last = values[-1]-1
     row = m[last]
+
     if row.sum() == 0:
         return [0.25]*4
+
     return (row/row.sum()).tolist()
 
 # =========================
-# INIT SESSION
+# SESSION INIT
 # =========================
 if "data_text" not in st.session_state:
     st.session_state.data_text = ""
@@ -75,7 +77,7 @@ if "history" not in st.session_state:
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan BOT Stable vFinal (Cloud Safe)")
+st.title("🧠 Fantan BOT Stable (main.py version)")
 
 col1, col2 = st.columns(2)
 
@@ -102,7 +104,7 @@ values = parse_data(st.session_state.data_text)
 st.write(f"📊 Data: {len(values)}")
 
 # =========================
-# LAST 20 DISPLAY
+# LAST 20
 # =========================
 st.subheader("📋 20 ván gần nhất")
 
@@ -136,14 +138,12 @@ if st.button("🚀 RUN BOT"):
     X = np.array(X)
     y = np.array(y)
 
-    # TRAIN
     model = st.session_state.model
     model.fit(X, y)
 
     seq = np.array(values[-WINDOW:]).reshape(1,-1)
     ml = model.predict_proba(seq)[0]
 
-    # FEATURES
     f1 = freq(values)
     f2 = streak(values)
     f3 = markov(values)
@@ -189,4 +189,4 @@ if st.session_state.probs is not None:
 st.markdown("---")
 st.subheader("📊 HIỆU SUẤT")
 
-st.info("Stable version (no TensorFlow, no crash, Cloud safe)")
+st.info("Running on main.py stable version (Cloud-safe)")
