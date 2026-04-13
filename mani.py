@@ -9,7 +9,6 @@ from sklearn.preprocessing import StandardScaler
 # =========================
 # CONFIG
 # =========================
-WINDOW = 20
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
 
 # =========================
@@ -30,7 +29,6 @@ def parse_data(text):
 # FEATURES
 # =========================
 def get_features(values):
-
     freq = [values[-50:].count(i)/50 for i in [1,2,3,4]]
 
     streak = [0]*4
@@ -56,14 +54,17 @@ def get_features(values):
 if "data_text" not in st.session_state:
     st.session_state.data_text = ""
 
+if "trained" not in st.session_state:
+    st.session_state.trained = False
+
 if "rf" not in st.session_state:
-    st.session_state.rf = RandomForestClassifier(n_estimators=300, max_depth=10)
+    st.session_state.rf = None
 
 if "meta" not in st.session_state:
-    st.session_state.meta = LogisticRegression(max_iter=300)
+    st.session_state.meta = None
 
 if "scaler" not in st.session_state:
-    st.session_state.scaler = StandardScaler()
+    st.session_state.scaler = None
 
 if "probs" not in st.session_state:
     st.session_state.probs = None
@@ -82,46 +83,50 @@ if st.session_state.data_text == "":
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan AI PRO FINAL")
+st.title("🧠 Fantan AI PRO (FAST MODE)")
 
+# ===== SETTINGS =====
+st.subheader("⚙️ Cài đặt")
+
+WINDOW = st.slider("Window Size", 5, 50, 20)
+
+# ===== BUTTONS =====
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("☁️ Load Data từ Sheet"):
+    if st.button("☁️ Load Data"):
         data = load_data()
         if data:
             st.session_state.data_text = "".join(map(str, data))
-            st.success("Đã load dữ liệu!")
+            st.success("Loaded!")
             st.rerun()
-        else:
-            st.error("Không load được dữ liệu")
 
 with col2:
-    if st.button("🗑 Reset Data"):
+    if st.button("🗑 Reset"):
         st.session_state.data_text = ""
-        st.session_state.probs = None
-        st.success("Đã reset")
+        st.session_state.trained = False
+        st.success("Reset!")
 
+# ===== INPUT =====
 with st.form("form"):
     st.text_area("DATA (1-4)", key="data_text", height=150)
     st.form_submit_button("Update")
 
 values = parse_data(st.session_state.data_text)
-
 st.write(f"📊 Data: {len(values)}")
 
 # =========================
-# RUN AI
+# TRAIN AI
 # =========================
-if st.button("🚀 RUN AI"):
+if st.button("🧠 TRAIN AI (thủ công)"):
 
     if len(values) < WINDOW + 100:
-        st.warning("Cần thêm data")
+        st.warning("Thiếu data để train")
         st.stop()
 
-    rf = st.session_state.rf
-    meta = st.session_state.meta
-    scaler = st.session_state.scaler
+    rf = RandomForestClassifier(n_estimators=150, max_depth=10)
+    meta = LogisticRegression(max_iter=300)
+    scaler = StandardScaler()
 
     X_meta = []
     y_meta = []
@@ -148,14 +153,29 @@ if st.button("🚀 RUN AI"):
         X_meta.append(np.concatenate([ml, feat]))
         y_meta.append(values[i]-1)
 
-    if len(X_meta) < 30:
-        st.warning("Không đủ data train AI")
-        st.stop()
-
     X_meta = scaler.fit_transform(X_meta)
     meta.fit(X_meta, y_meta)
 
-    # predict
+    st.session_state.rf = rf
+    st.session_state.meta = meta
+    st.session_state.scaler = scaler
+    st.session_state.trained = True
+
+    st.success("✅ TRAIN XONG")
+
+# =========================
+# RUN AI (FAST)
+# =========================
+if st.button("🚀 RUN AI"):
+
+    if not st.session_state.trained:
+        st.warning("❌ Chưa train AI")
+        st.stop()
+
+    rf = st.session_state.rf
+    meta = st.session_state.meta
+    scaler = st.session_state.scaler
+
     seq = values[-WINDOW:]
 
     X_rf = []
@@ -185,29 +205,27 @@ if st.session_state.probs is not None:
     probs = st.session_state.probs
     ml = st.session_state.ml_probs
 
-    st.subheader("📊 XÁC SUẤT")
+    st.subheader("📊 Xác suất")
 
     cols = st.columns(4)
     for i in range(4):
-        cols[i].metric(f"Số {i+1}", f"{probs[i]*100:.1f}%")
+        cols[i].metric(f"{i+1}", f"{probs[i]*100:.1f}%")
 
     top2 = np.argsort(probs)[-2:][::-1]
     st.success(f"🎯 ĐÁNH: {top2[0]+1} + {top2[1]+1}")
 
-    # confidence
     conf = sorted(probs)[-1] - sorted(probs)[-2]
 
     st.subheader("🔥 Confidence")
     st.write(f"{conf:.3f}")
 
     if conf < 0.05:
-        st.warning("⚠️ KÈO YẾU → NGHỈ")
+        st.warning("⚠️ Kèo yếu")
     elif conf < 0.1:
-        st.info("🤔 KÈO TRUNG BÌNH")
+        st.info("🤔 Kèo trung")
     else:
-        st.success("💰 KÈO MẠNH")
+        st.success("💰 Kèo mạnh")
 
-    # chart
     st.subheader("🧠 AI Insight")
 
     df = pd.DataFrame({
@@ -216,9 +234,3 @@ if st.session_state.probs is not None:
     }, index=[1,2,3,4])
 
     st.bar_chart(df)
-
-    # detail
-    st.subheader("📋 Chi tiết")
-
-    for i in range(4):
-        st.write(f"Số {i+1}: ML={ml[i]:.3f} → META={probs[i]:.3f}")
