@@ -65,7 +65,7 @@ if "ml_probs" not in st.session_state:
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan AI PRO DASHBOARD")
+st.title("🧠 Fantan AI PRO (mani.py version)")
 
 with st.form("form"):
     st.text_area("DATA (1-4)", key="data_text", height=150)
@@ -112,6 +112,10 @@ if st.button("🚀 RUN AI"):
         X_meta.append(np.concatenate([ml, feat]))
         y_meta.append(values[i]-1)
 
+    if len(X_meta) < 30:
+        st.warning("Không đủ data train AI")
+        st.stop()
+
     X_meta = scaler.fit_transform(X_meta)
     meta.fit(X_meta, y_meta)
 
@@ -130,7 +134,9 @@ if st.button("🚀 RUN AI"):
     ml = rf.predict_proba([seq])[0]
     feat = get_features(values)
 
-    final = meta.predict_proba(scaler.transform([np.concatenate([ml, feat])]))[0]
+    final = meta.predict_proba(
+        scaler.transform([np.concatenate([ml, feat])])
+    )[0]
 
     st.session_state.probs = final
     st.session_state.ml_probs = ml
@@ -152,9 +158,7 @@ if st.session_state.probs is not None:
     top2 = np.argsort(probs)[-2:][::-1]
     st.success(f"🎯 ĐÁNH: {top2[0]+1} + {top2[1]+1}")
 
-    # =========================
-    # CONFIDENCE
-    # =========================
+    # confidence
     conf = sorted(probs)[-1] - sorted(probs)[-2]
 
     st.subheader("🔥 Confidence")
@@ -167,21 +171,17 @@ if st.session_state.probs is not None:
     else:
         st.success("💰 KÈO MẠNH")
 
-    # =========================
-    # AI INSIGHT
-    # =========================
+    # chart
     st.subheader("🧠 AI Insight")
 
-    df_compare = pd.DataFrame({
+    df = pd.DataFrame({
         "ML": ml,
         "META": probs
     }, index=[1,2,3,4])
 
-    st.bar_chart(df_compare)
+    st.bar_chart(df)
 
-    # =========================
-    # DECISION TABLE
-    # =========================
+    # detail
     st.subheader("📋 Chi tiết")
 
     for i in range(4):
