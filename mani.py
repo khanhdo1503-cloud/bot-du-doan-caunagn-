@@ -74,21 +74,26 @@ if "probs" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
+if "weights" not in st.session_state:
+    st.session_state.weights = {
+        "ml": 0.5,
+        "freq": 0.2,
+        "streak": 0.15,
+        "markov": 0.15
+    }
+
 # =========================
-# 🔥 FIX HISTORY CŨ (ANTI CRASH)
+# FIX HISTORY (ANTI CRASH)
 # =========================
 for h in st.session_state.history:
-    if "len" not in h:
-        h["len"] = 0
-    if "result" not in h:
-        h["result"] = None
-    if "pick" not in h:
-        h["pick"] = []
+    h.setdefault("len", 0)
+    h.setdefault("result", None)
+    h.setdefault("pick", [])
 
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan BOT FINAL (No Crash Version)")
+st.title("🧠 Fantan BOT PRO MAX")
 
 col1, col2 = st.columns(2)
 
@@ -116,7 +121,7 @@ cur_len = len(values)
 st.write(f"📊 Data: {cur_len}")
 
 # =========================
-# 🔥 UPDATE RESULT AUTO (ANTI CRASH 100%)
+# UPDATE RESULT + LEARNING
 # =========================
 if len(st.session_state.history) > 0:
     last = st.session_state.history[-1]
@@ -127,6 +132,24 @@ if len(st.session_state.history) > 0:
     if last_len is not None and last_result is None and cur_len > last_len:
         if last_len < len(values):
             last["result"] = values[last_len]
+
+            # 🔥 ADAPTIVE LEARNING
+            win = last["result"] in last["pick"]
+            w = st.session_state.weights
+
+            if win:
+                w["ml"] += 0.02
+                w["freq"] += 0.01
+            else:
+                w["ml"] -= 0.02
+                w["freq"] -= 0.01
+
+            for k in w:
+                w[k] = max(0.05, min(0.7, w[k]))
+
+            total = sum(w.values())
+            for k in w:
+                w[k] /= total
 
 # =========================
 # LAST 20
@@ -172,13 +195,15 @@ if st.button("🚀 RUN BOT"):
     f2 = streak(values)
     f3 = markov(values)
 
+    w = st.session_state.weights
+
     final = []
     for i in range(4):
         final.append(
-            0.5*ml[i] +
-            0.2*f1[i] +
-            0.15*f2[i] +
-            0.15*f3[i]
+            w["ml"] * ml[i] +
+            w["freq"] * f1[i] +
+            w["streak"] * f2[i] +
+            w["markov"] * f3[i]
         )
 
     final = np.array(final)
@@ -195,21 +220,51 @@ if st.button("🚀 RUN BOT"):
     })
 
 # =========================
-# OUTPUT
+# OUTPUT + CONFIDENCE
 # =========================
 if st.session_state.probs is not None:
+
+    probs = st.session_state.probs
 
     st.subheader("📊 XÁC SUẤT")
 
     cols = st.columns(4)
     for i in range(4):
-        cols[i].metric(str(i+1), f"{st.session_state.probs[i]*100:.1f}%")
+        cols[i].metric(str(i+1), f"{probs[i]*100:.1f}%")
 
-    t = np.argsort(st.session_state.probs)[-2:][::-1]
-    st.success(f"👉 ĐÁNH: {t[0]+1} + {t[1]+1}")
+    top2 = np.argsort(probs)[-2:][::-1]
+    st.success(f"👉 ĐÁNH: {top2[0]+1} + {top2[1]+1}")
+
+    # 🔥 CONFIDENCE
+    sorted_probs = sorted(probs)
+    confidence = sorted_probs[-1] - sorted_probs[-2]
+
+    st.write(f"🔥 Confidence: {confidence:.3f}")
+
+    if confidence < 0.05:
+        st.warning("⚠️ Kèo yếu - NÊN NGHỈ")
+    elif confidence < 0.1:
+        st.info("🤔 Kèo trung bình")
+    else:
+        st.success("💰 Kèo mạnh")
 
 # =========================
-# HIỆU SUẤT
+# LOSS STREAK
+# =========================
+loss_streak = 0
+for h in reversed(st.session_state.history):
+    if h.get("result") is None:
+        break
+    if h["result"] not in h["pick"]:
+        loss_streak += 1
+    else:
+        break
+
+if loss_streak >= 3:
+    st.error(f"💀 Thua {loss_streak} ván liên tiếp → DỪNG!")
+
+# =========================
+# STATS
 # =========================
 win = 0
 loss = 0
@@ -228,7 +283,7 @@ st.markdown("---")
 st.subheader("📊 HIỆU SUẤT")
 
 if total == 0:
-    st.info("Chưa có dữ liệu (RUN → thêm data → RUN)")
+    st.info("Chưa có dữ liệu")
 else:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total", total)
