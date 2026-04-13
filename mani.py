@@ -10,10 +10,19 @@ from sklearn.preprocessing import StandardScaler
 # CONFIG
 # =========================
 WINDOW = 20
+CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
 
 # =========================
-# PARSE
+# LOAD DATA
 # =========================
+def load_data():
+    try:
+        df = pd.read_csv(CSV_URL)
+        col = pd.to_numeric(df.iloc[:, 0], errors="coerce")
+        return col.dropna().astype(int).tolist()
+    except:
+        return []
+
 def parse_data(text):
     return list(map(int, re.findall(r"[1-4]", str(text))))
 
@@ -63,19 +72,46 @@ if "ml_probs" not in st.session_state:
     st.session_state.ml_probs = None
 
 # =========================
+# AUTO LOAD DATA
+# =========================
+if st.session_state.data_text == "":
+    data = load_data()
+    if data:
+        st.session_state.data_text = "".join(map(str, data))
+
+# =========================
 # UI
 # =========================
-st.title("🧠 Fantan AI PRO (mani.py version)")
+st.title("🧠 Fantan AI PRO FINAL")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button("☁️ Load Data từ Sheet"):
+        data = load_data()
+        if data:
+            st.session_state.data_text = "".join(map(str, data))
+            st.success("Đã load dữ liệu!")
+            st.rerun()
+        else:
+            st.error("Không load được dữ liệu")
+
+with col2:
+    if st.button("🗑 Reset Data"):
+        st.session_state.data_text = ""
+        st.session_state.probs = None
+        st.success("Đã reset")
 
 with st.form("form"):
     st.text_area("DATA (1-4)", key="data_text", height=150)
     st.form_submit_button("Update")
 
 values = parse_data(st.session_state.data_text)
+
 st.write(f"📊 Data: {len(values)}")
 
 # =========================
-# RUN
+# RUN AI
 # =========================
 if st.button("🚀 RUN AI"):
 
