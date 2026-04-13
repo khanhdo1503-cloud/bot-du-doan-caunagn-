@@ -74,11 +74,16 @@ if "probs" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# 🔥 FIX HISTORY CŨ (QUAN TRỌNG)
+# =========================
+# 🔥 FIX HISTORY CŨ (ANTI CRASH)
+# =========================
 for h in st.session_state.history:
-    h.setdefault("len", 0)
-    h.setdefault("result", None)
-    h.setdefault("pick", [])
+    if "len" not in h:
+        h["len"] = 0
+    if "result" not in h:
+        h["result"] = None
+    if "pick" not in h:
+        h["pick"] = []
 
 # =========================
 # UI
@@ -111,15 +116,17 @@ cur_len = len(values)
 st.write(f"📊 Data: {cur_len}")
 
 # =========================
-# UPDATE RESULT AUTO (KHÔNG CRASH)
+# 🔥 UPDATE RESULT AUTO (ANTI CRASH 100%)
 # =========================
 if len(st.session_state.history) > 0:
     last = st.session_state.history[-1]
 
-    if last["result"] is None and cur_len > last["len"]:
-        idx = last["len"]
-        if idx < len(values):
-            last["result"] = values[idx]
+    last_len = last.get("len", None)
+    last_result = last.get("result", None)
+
+    if last_len is not None and last_result is None and cur_len > last_len:
+        if last_len < len(values):
+            last["result"] = values[last_len]
 
 # =========================
 # LAST 20
@@ -147,7 +154,6 @@ if st.button("🚀 RUN BOT"):
         st.warning("Chưa đủ data")
         st.stop()
 
-    # dataset
     X, y = [], []
     for i in range(len(values)-WINDOW):
         X.append(values[i:i+WINDOW])
@@ -209,7 +215,7 @@ win = 0
 loss = 0
 
 for h in st.session_state.history:
-    if h["result"] is not None:
+    if h.get("result") is not None:
         if h["result"] in h["pick"]:
             win += 1
         else:
