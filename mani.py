@@ -73,7 +73,7 @@ if "ml_probs" not in st.session_state:
     st.session_state.ml_probs = None
 
 # =========================
-# AUTO LOAD DATA
+# AUTO LOAD
 # =========================
 if st.session_state.data_text == "":
     data = load_data()
@@ -83,14 +83,11 @@ if st.session_state.data_text == "":
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan AI PRO (FAST MODE)")
+st.title("🧠 Fantan AI PRO (FAST TRAIN)")
 
-# ===== SETTINGS =====
-st.subheader("⚙️ Cài đặt")
-
+st.subheader("⚙️ Settings")
 WINDOW = st.slider("Window Size", 5, 50, 20)
 
-# ===== BUTTONS =====
 col1, col2 = st.columns(2)
 
 with col1:
@@ -107,7 +104,6 @@ with col2:
         st.session_state.trained = False
         st.success("Reset!")
 
-# ===== INPUT =====
 with st.form("form"):
     st.text_area("DATA (1-4)", key="data_text", height=150)
     st.form_submit_button("Update")
@@ -116,36 +112,34 @@ values = parse_data(st.session_state.data_text)
 st.write(f"📊 Data: {len(values)}")
 
 # =========================
-# TRAIN AI
+# TRAIN (FAST)
 # =========================
-if st.button("🧠 TRAIN AI (thủ công)"):
+if st.button("🧠 TRAIN AI"):
 
-    if len(values) < WINDOW + 100:
-        st.warning("Thiếu data để train")
+    if len(values) < WINDOW + 50:
+        st.warning("Thiếu data")
         st.stop()
 
-    rf = RandomForestClassifier(n_estimators=150, max_depth=10)
+    rf = RandomForestClassifier(n_estimators=120, max_depth=10)
     meta = LogisticRegression(max_iter=300)
     scaler = StandardScaler()
 
+    # ===== TRAIN RF 1 LẦN =====
+    X_rf = []
+    y_rf = []
+
+    for i in range(len(values)-WINDOW):
+        X_rf.append(values[i:i+WINDOW])
+        y_rf.append(values[i+WINDOW]-1)
+
+    rf.fit(X_rf, y_rf)
+
+    # ===== BUILD META =====
     X_meta = []
     y_meta = []
 
     for i in range(WINDOW, len(values)-1):
-
         seq = values[i-WINDOW:i]
-
-        X_rf = []
-        y_rf = []
-
-        for j in range(i-WINDOW):
-            X_rf.append(values[j:j+WINDOW])
-            y_rf.append(values[j+WINDOW]-1)
-
-        if len(X_rf) < 50:
-            continue
-
-        rf.fit(X_rf, y_rf)
 
         ml = rf.predict_proba([seq])[0]
         feat = get_features(values[:i])
@@ -161,15 +155,15 @@ if st.button("🧠 TRAIN AI (thủ công)"):
     st.session_state.scaler = scaler
     st.session_state.trained = True
 
-    st.success("✅ TRAIN XONG")
+    st.success("✅ TRAIN XONG (NHANH)")
 
 # =========================
-# RUN AI (FAST)
+# RUN
 # =========================
 if st.button("🚀 RUN AI"):
 
     if not st.session_state.trained:
-        st.warning("❌ Chưa train AI")
+        st.warning("❌ Chưa train")
         st.stop()
 
     rf = st.session_state.rf
@@ -177,15 +171,6 @@ if st.button("🚀 RUN AI"):
     scaler = st.session_state.scaler
 
     seq = values[-WINDOW:]
-
-    X_rf = []
-    y_rf = []
-
-    for j in range(len(values)-WINDOW):
-        X_rf.append(values[j:j+WINDOW])
-        y_rf.append(values[j+WINDOW]-1)
-
-    rf.fit(X_rf, y_rf)
 
     ml = rf.predict_proba([seq])[0]
     feat = get_features(values)
