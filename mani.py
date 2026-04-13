@@ -10,38 +10,26 @@ from sklearn.preprocessing import StandardScaler
 # CONFIG
 # =========================
 WINDOW = 20
-CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5-pPONvbU7PR7FteVtEBvN6EuudQ2rgbV3sHX-Ngy1PALF4nvyTBidXOXXE325_TLKKDJwZB7xFgH/pub?output=csv"
 
 # =========================
-# LOAD
+# PARSE
 # =========================
-def load_data():
-    try:
-        df = pd.read_csv(CSV_URL)
-        col = pd.to_numeric(df.iloc[:, 0], errors="coerce")
-        return col.dropna().astype(int).tolist()
-    except:
-        return []
-
 def parse_data(text):
     return list(map(int, re.findall(r"[1-4]", str(text))))
 
 # =========================
-# FEATURE ENGINE
+# FEATURES
 # =========================
 def get_features(values):
 
-    # frequency
     freq = [values[-50:].count(i)/50 for i in [1,2,3,4]]
 
-    # streak
     streak = [0]*4
     for i,v in enumerate(reversed(values)):
         if streak[v-1] == 0:
             streak[v-1] = i+1
     streak = [x/max(streak) for x in streak]
 
-    # markov
     m = np.zeros((4,4))
     for i in range(len(values)-1):
         m[values[i]-1][values[i+1]-1] += 1
@@ -49,7 +37,6 @@ def get_features(values):
     row = m[values[-1]-1]
     markov = row/row.sum() if row.sum() else np.ones(4)/4
 
-    # recent pattern (last 5)
     recent = values[-5:]
 
     return np.concatenate([freq, streak, markov, recent])
@@ -61,11 +48,7 @@ if "data_text" not in st.session_state:
     st.session_state.data_text = ""
 
 if "rf" not in st.session_state:
-    st.session_state.rf = RandomForestClassifier(
-        n_estimators=300,
-        max_depth=10,
-        random_state=42
-    )
+    st.session_state.rf = RandomForestClassifier(n_estimators=300, max_depth=10)
 
 if "meta" not in st.session_state:
     st.session_state.meta = LogisticRegression(max_iter=300)
@@ -76,39 +59,28 @@ if "scaler" not in st.session_state:
 if "probs" not in st.session_state:
     st.session_state.probs = None
 
+if "ml_probs" not in st.session_state:
+    st.session_state.ml_probs = None
+
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan Smart AI v2 (20k Data Ready)")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    if st.button("☁️ Load Data"):
-        data = load_data()
-        if data:
-            st.session_state.data_text = "".join(map(str, data))
-            st.rerun()
-
-with col2:
-    if st.button("🗑 Reset"):
-        st.session_state.probs = None
+st.title("🧠 Fantan AI PRO DASHBOARD")
 
 with st.form("form"):
     st.text_area("DATA (1-4)", key="data_text", height=150)
     st.form_submit_button("Update")
 
 values = parse_data(st.session_state.data_text)
-
 st.write(f"📊 Data: {len(values)}")
 
 # =========================
 # RUN
 # =========================
-if st.button("🚀 RUN BOT"):
+if st.button("🚀 RUN AI"):
 
     if len(values) < WINDOW + 100:
-        st.warning("Cần nhiều data hơn để AI hoạt động tốt")
+        st.warning("Cần thêm data")
         st.stop()
 
     rf = st.session_state.rf
@@ -118,9 +90,6 @@ if st.button("🚀 RUN BOT"):
     X_meta = []
     y_meta = []
 
-    # =========================
-    # BUILD DATASET
-    # =========================
     for i in range(WINDOW, len(values)-1):
 
         seq = values[i-WINDOW:i]
@@ -140,20 +109,13 @@ if st.button("🚀 RUN BOT"):
         ml = rf.predict_proba([seq])[0]
         feat = get_features(values[:i])
 
-        combined = np.concatenate([ml, feat])
-
-        X_meta.append(combined)
+        X_meta.append(np.concatenate([ml, feat]))
         y_meta.append(values[i]-1)
 
-    # =========================
-    # TRAIN META
-    # =========================
     X_meta = scaler.fit_transform(X_meta)
     meta.fit(X_meta, y_meta)
 
-    # =========================
-    # PREDICT
-    # =========================
+    # predict
     seq = values[-WINDOW:]
 
     X_rf = []
@@ -168,12 +130,10 @@ if st.button("🚀 RUN BOT"):
     ml = rf.predict_proba([seq])[0]
     feat = get_features(values)
 
-    combined = np.concatenate([ml, feat])
-    combined = scaler.transform([combined])
+    final = meta.predict_proba(scaler.transform([np.concatenate([ml, feat])]))[0]
 
-    probs = meta.predict_proba(combined)[0]
-
-    st.session_state.probs = probs
+    st.session_state.probs = final
+    st.session_state.ml_probs = ml
 
 # =========================
 # OUTPUT
@@ -181,23 +141,48 @@ if st.button("🚀 RUN BOT"):
 if st.session_state.probs is not None:
 
     probs = st.session_state.probs
+    ml = st.session_state.ml_probs
 
-    st.subheader("📊 XÁC SUẤT (SMART AI)")
+    st.subheader("📊 XÁC SUẤT")
 
     cols = st.columns(4)
     for i in range(4):
-        cols[i].metric(str(i+1), f"{probs[i]*100:.1f}%")
+        cols[i].metric(f"Số {i+1}", f"{probs[i]*100:.1f}%")
 
     top2 = np.argsort(probs)[-2:][::-1]
-    st.success(f"👉 ĐÁNH: {top2[0]+1} + {top2[1]+1}")
+    st.success(f"🎯 ĐÁNH: {top2[0]+1} + {top2[1]+1}")
 
+    # =========================
+    # CONFIDENCE
+    # =========================
     conf = sorted(probs)[-1] - sorted(probs)[-2]
 
-    st.write(f"🔥 Confidence: {conf:.3f}")
+    st.subheader("🔥 Confidence")
+    st.write(f"{conf:.3f}")
 
     if conf < 0.05:
-        st.warning("Kèo yếu - nghỉ")
+        st.warning("⚠️ KÈO YẾU → NGHỈ")
     elif conf < 0.1:
-        st.info("Kèo trung bình")
+        st.info("🤔 KÈO TRUNG BÌNH")
     else:
-        st.success("Kèo mạnh")
+        st.success("💰 KÈO MẠNH")
+
+    # =========================
+    # AI INSIGHT
+    # =========================
+    st.subheader("🧠 AI Insight")
+
+    df_compare = pd.DataFrame({
+        "ML": ml,
+        "META": probs
+    }, index=[1,2,3,4])
+
+    st.bar_chart(df_compare)
+
+    # =========================
+    # DECISION TABLE
+    # =========================
+    st.subheader("📋 Chi tiết")
+
+    for i in range(4):
+        st.write(f"Số {i+1}: ML={ml[i]:.3f} → META={probs[i]:.3f}")
