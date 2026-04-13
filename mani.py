@@ -74,13 +74,16 @@ if "probs" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
-if "last_len" not in st.session_state:
-    st.session_state.last_len = 0
+# 🔥 FIX HISTORY CŨ (QUAN TRỌNG)
+for h in st.session_state.history:
+    h.setdefault("len", 0)
+    h.setdefault("result", None)
+    h.setdefault("pick", [])
 
 # =========================
 # UI
 # =========================
-st.title("🧠 Fantan BOT FINAL (Real Winrate)")
+st.title("🧠 Fantan BOT FINAL (No Crash Version)")
 
 col1, col2 = st.columns(2)
 
@@ -108,13 +111,15 @@ cur_len = len(values)
 st.write(f"📊 Data: {cur_len}")
 
 # =========================
-# UPDATE RESULT TỰ ĐỘNG
+# UPDATE RESULT AUTO (KHÔNG CRASH)
 # =========================
 if len(st.session_state.history) > 0:
     last = st.session_state.history[-1]
 
     if last["result"] is None and cur_len > last["len"]:
-        last["result"] = values[last["len"]]
+        idx = last["len"]
+        if idx < len(values):
+            last["result"] = values[idx]
 
 # =========================
 # LAST 20
@@ -198,7 +203,7 @@ if st.session_state.probs is not None:
     st.success(f"👉 ĐÁNH: {t[0]+1} + {t[1]+1}")
 
 # =========================
-# HIỆU SUẤT THẬT
+# HIỆU SUẤT
 # =========================
 win = 0
 loss = 0
